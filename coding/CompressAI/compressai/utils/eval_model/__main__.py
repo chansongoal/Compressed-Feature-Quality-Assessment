@@ -242,7 +242,7 @@ def eval_model(
     is_vbr_model = args["architecture"].endswith("-vbr")
     #gcs
     model_type = args['model_type']; task = args["task"]; trun_flag = args["trun_flag"]; trun_low = args["trun_low"]; trun_high = args['trun_high']
-    transform_type = args['transform_type']; qsamples = args['qsamples']; bit_depth = args['bit_depth']; transform_mapping_name = args['transform_mapping_name']
+    transform_type = args['transform_type']; qsamples = args['qsamples']; bit_depth = args['bit_depth']; transform_mapping_name = args['transform_mapping_name'].split(",")
     print(model_type, task, trun_flag, trun_low, trun_high, transform_type, qsamples, bit_depth)
     print(f"Using fixed transform mapping: {transform_mapping_name}")
 
@@ -451,7 +451,7 @@ def setup_args():
         "--transform_mapping_name",
         type=str,
         default="None",
-        help="Please input the transform_mapping_name.",
+        help="Input a single name or a comma-separated list of names.",
     )
     parent_parser.add_argument(
         "-source_file",

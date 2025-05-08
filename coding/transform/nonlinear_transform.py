@@ -7,6 +7,7 @@ from scipy.spatial.distance import cdist
 import matplotlib.pyplot as plt 
 import json
 import time 
+import random
 from typing import Union, List
 
 
@@ -267,7 +268,9 @@ def nonlinear_fitting(org_feat_path, transform_mapping_path, model_type, task, s
         transform_type (str): Quantization type.
         bit_depth (int): Bit depth for quantization.
     """
-    feat_names = sorted(os.listdir(org_feat_path))[:samples]
+    # feat_names = sorted(os.listdir(org_feat_path))[:samples]
+    all_feat_names = os.listdir(org_feat_path)
+    feat_names = random.sample(all_feat_names, samples)
     feat_list_all = []
 
     # Load and preprocess features
@@ -296,6 +299,9 @@ def nonlinear_fitting(org_feat_path, transform_mapping_path, model_type, task, s
         for ch in range(feat_list_all.shape[2]):
             feat_list = feat_list_all[:, :, ch, :, :]
             process_fitting(feat_list, transform_mapping_path, task, trun_low[ch], trun_high[ch], transform_type, samples, bit_depth, ch)
+        # ch = 1
+        # feat_list = feat_list_all[:, :, ch, :, :]
+        # process_fitting(feat_list, transform_mapping_path, task, trun_low[ch], trun_high[ch], transform_type, samples, bit_depth, ch)
     else:
         # Process all features together for other tasks
         feat_list = feat_list_all
@@ -326,7 +332,7 @@ def process_fitting(feat_list, transform_mapping_path, task, trun_low, trun_high
     print(f"KMeans Feature MSE: {kmeans_mse:.8f}")
 
     # Save quantization mapping
-    suffix = f"_ch{ch}" if ch is not None else ""
+    suffix = f"_layer{(ch+1)*10}" if ch is not None else ""
     transform_mapping_name = f'{transform_mapping_path}/transform_mapping_{task}{suffix}_{transform_type}{samples}_bitdepth{bit_depth}.json'
     save_quantization_points(kmeans_points, transform_mapping_name)
     
@@ -379,13 +385,21 @@ def get_feature_names(source_file):
         return [line.strip().split()[0].split('.')[0]+'.npy' for line in file if line.strip()]
     
 if __name__ == "__main__":
-    # model_type = 'dinov2'; task = 'seg'
-    # max_v = 105.95; min_v = -506.97; trun_high = 105.95; trun_low = -506.97
-    # source_name = 'seg_val_100.txt' 
+    # model_type = 'dinov2'; task = 'cls'
+    # max_v = 94.15; min_v = -542.31; trun_high = 94.15; trun_low = -542.31
+    # source_name = 'imagenet_selected_label500.txt' 
+
+    model_type = 'dinov2'; task = 'seg'
+    max_v = 105.95; min_v = -506.97; trun_high = 105.95; trun_low = -506.97
+    source_name = 'seg_val_100.txt' 
+
+    # model_type = 'dinov2'; task = 'dpt'
+    # max_v = [3.27, 5.03, 25.05, 100.27]; min_v = [-2.39, -26.44, -323.30, -504.44]; trun_high = [3.27, 5.03, 25.05, 100.27]; trun_low = [-2.39, -26.44, -323.30, -504.44]
+    # source_name = 'nyu_test_80.txt' 
     
-    model_type = 'sd3'; task = 'tti'
-    max_v = 4.46; min_v = -5.79; trun_high = 4.46; trun_low = -5.79
-    source_name = 'captions_val2017_select500.txt' 
+    # model_type = 'sd3'; task = 'tti'
+    # max_v = 4.46; min_v = -5.79; trun_high = 4.46; trun_low = -5.79
+    # source_name = 'captions_val2017_select500.txt' 
 
     # model_type = 'llama3'; task = 'csr'
     # max_v = 47.75; min_v = -71.50; trun_high = 47.75; trun_low = -71.50
@@ -394,13 +408,15 @@ if __name__ == "__main__":
     train_data_root = f'/gdata1/gaocs/FCM_LM_Train_Data'
     data_root = f'/gdata1/gaocs/Data_DTUFC'
     org_feat_path = f'{train_data_root}/{model_type}/{task}/org_feat/train'
+    if task=='dpt': org_feat_path = '/gdata1/gaocs/FCM_LM_Train_Data/dinov2/dpt/org_feat_full'
     transform_mapping_path = f'{data_root}/transform_mapping/{model_type}_{task}'; os.makedirs(transform_mapping_path, exist_ok=True)
     
-    transform_type = 'kmeans'; samples = 10; bit_depths = [8]
+    transform_type = 'kmeans'; samples_all = [100]; bit_depths = [8, 10]
 
-    for bit_depth in bit_depths:       
-        trun_flag = False
-        if trun_flag == False: trun_high = max_v; trun_low = min_v
-        print(model_type, task, trun_flag, transform_type, samples, max_v, min_v, trun_high, trun_low, bit_depth)
-        # generate transform mapping
-        nonlinear_fitting(org_feat_path, transform_mapping_path, model_type, task, samples, trun_flag, trun_high, trun_low, transform_type, bit_depth)
+    for samples in samples_all:
+        for bit_depth in bit_depths:       
+            trun_flag = False
+            if trun_flag == False: trun_high = max_v; trun_low = min_v
+            print(model_type, task, trun_flag, transform_type, samples, max_v, min_v, trun_high, trun_low, bit_depth)
+            # generate transform mapping
+            nonlinear_fitting(org_feat_path, transform_mapping_path, model_type, task, samples, trun_flag, trun_high, trun_low, transform_type, bit_depth)

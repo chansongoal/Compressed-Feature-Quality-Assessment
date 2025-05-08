@@ -18,7 +18,12 @@ def generate_train_commands(train_data_root, data_root, \
     training_log_path = f"{data_root}/training_log/{arch_name}/trained_{train_task}/{transform_type}{samples}_bitdepth{bit_depth}"; os.makedirs(training_log_path, exist_ok=True)
 
     if train_task == 'hybrid':
-        train_data_paths = f"{train_data_root}/dinov2/seg/{transform_type}{samples}_bitdepth{bit_depth}/crop_hgt256_wdt256,{train_data_root}/llama3/csr/{transform_type}{samples}_bitdepth{bit_depth}/crop_hgt256_wdt256,{train_data_root}/sd3/tti/{transform_type}{samples}_bitdepth{bit_depth}/crop_hgt256_wdt256 "
+        train_data_cls = f"{train_data_root}/dinov2/cls/{transform_type}{samples}_bitdepth{bit_depth}/crop_hgt256_wdt256"
+        train_data_seg = f"{train_data_root}/dinov2/seg/{transform_type}{samples}_bitdepth{bit_depth}/crop_hgt256_wdt256"
+        train_data_dpt = f"{train_data_root}/dinov2/dpt/{transform_type}{samples}_bitdepth{bit_depth}/crop_hgt256_wdt256"
+        train_data_csr = f"{train_data_root}/llama3/csr/{transform_type}{samples}_bitdepth{bit_depth}/crop_hgt256_wdt256"
+        train_data_tti = f"{train_data_root}/sd3/tti/{transform_type}{samples}_bitdepth{bit_depth}/crop_hgt256_wdt256"
+        train_data_paths = train_data_cls + ',' + train_data_seg + ',' + train_data_dpt + ' '
     else:
         train_data_paths = f"{train_data_root}/{train_model_type}/{train_task}/{transform_type}{samples}_bitdepth{bit_depth}/crop_hgt{patch_size.split('-')[0]}_wdt{patch_size.split('-')[1]} "
     
@@ -150,16 +155,23 @@ def compressai_test(test_data_root, data_root, \
                     train_task, \
                     arch, arch_name, lambda_value, epochs, learning_rate, batch_size, patch_size):
 
-    test_task_all = ['csr', 'seg', 'tti']
-    # test_task_all = ['tti']
+    # test_task_all = ['cls', 'seg', 'dpt']
+    test_task_all = ['cls']
 
     for idx, test_task in enumerate(test_task_all):
+        if test_task == 'cls': test_model_type = 'dinov2'; source_file = 'imagenet_selected_label100.txt'; trun_high = 94.15; trun_low = -542.31
         if test_task == 'seg': test_model_type = 'dinov2'; source_file = 'seg_val_100.txt'; trun_high = 105.95; trun_low = -506.97
+        if test_task == 'dpt': test_model_type = 'dinov2'; source_file = 'nyu_test_name100.txt'; trun_high = [3.27, 5.03, 25.05, 100.27]; trun_low = [-2.39, -26.44, -323.30, -504.44]
         elif test_task == 'csr': test_model_type = 'llama3'; source_file = 'arc_challenge_test_longest500_shape.txt'; trun_high = 47.75; trun_low = -71.50
         elif test_task == 'tti': test_model_type = 'sd3'; source_file = 'captions_val2017_select500.txt'; trun_high = 4.46; trun_low = -5.79
 
         transform_mapping_name = f'{data_root}/transform_mapping/{test_model_type}_{test_task}/transform_mapping_{test_task}_{transform_type}{samples}_bitdepth{bit_depth}.json'
-
+        if test_task == 'dpt':
+            layers = [10, 20, 30, 40]
+            transform_mapping_name = ",".join([
+                f"{data_root}/transform_mapping/{test_model_type}_{test_task}/transform_mapping_{test_task}_layer{layer}_{transform_type}{samples}_bitdepth{bit_depth}.json"
+                for layer in layers
+            ])
         eval_cmd = generate_eval_commands(test_data_root, data_root, \
                                           trun_flag, trun_high, trun_low, transform_type, samples, bit_depth, transform_mapping_name, \
                                           train_task, test_model_type, test_task, source_file, \
@@ -179,7 +191,7 @@ def compressai_pipeline(pipeline_config, train_data_root, test_data_root, data_r
         arch_name = 'hyperprior'; print(arch_name)
     elif arch == 'elic2022-official':
         arch_name = 'elic'; print(arch_name)
-    trun_flag = 'False'
+    trun_flag = 'False' if transform_type == 'kmeans' else 'True'
 
     if 'train' in pipeline_config:
         compressai_train(train_data_root, data_root, \
@@ -279,16 +291,16 @@ if __name__ == "__main__":
     pretrained_model = args.pretrained_model
     if pretrained_model: print(f'Pretrained model: {pretrained_model}')
 
-    data_root = "/gdata1/gaocs/Data_DTUFC"
+    data_root = "/gdata1/gaocs/Data_FQA"
     train_data_root = "/gdata1/gaocs/FCM_LM_Train_Data"
     test_data_root = "/gdata1/gaocs/FCM_LM_Test_Dataset"
 
-    # compressai_pipeline(pipeline_config, train_data_root, test_data_root, data_root, \
-    #                     transform_type, samples, bit_depth, \
-    #                     train_model_type, train_task, \
-    #                     arch, lambda_value, epochs, save_period, learning_rate, batch_size, patch_size, pretrained_model)
+    compressai_pipeline(pipeline_config, train_data_root, test_data_root, data_root, \
+                        transform_type, samples, bit_depth, \
+                        train_model_type, train_task, \
+                        arch, lambda_value, epochs, save_period, learning_rate, batch_size, patch_size, pretrained_model)
 
-    compressai_test_multiple(pipeline_config, train_data_root, test_data_root, data_root, \
-                            transform_type, samples, bit_depth, \
-                            train_model_type, train_task, \
-                            arch, lambda_value, epochs, save_period, learning_rate, batch_size, patch_size, pretrained_model)
+    # compressai_test_multiple(pipeline_config, train_data_root, test_data_root, data_root, \
+    #                         transform_type, samples, bit_depth, \
+    #                         train_model_type, train_task, \
+    #                         arch, lambda_value, epochs, save_period, learning_rate, batch_size, patch_size, pretrained_model)

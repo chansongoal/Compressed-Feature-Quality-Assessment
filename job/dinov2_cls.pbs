@@ -1,0 +1,18 @@
+#PBS -N cls_eval_100
+#PBS -o /ghome/gaocs/FCM-UFC/err_out/cls_eval_100.out
+#PBS -e /ghome/gaocs/FCM-UFC/err_out/cls_eval_100.err
+#PBS -l nodes=1:gpus=1:A,walltime=350:00:00
+#PBS -r y
+cd $PBS_O_WORKDIR
+echo Time is `date`
+echo Directory is $PWD
+echo This job runs on following nodes and gpus:
+cat $PBS_NODEFILE
+cat $PBS_GPUFILE
+
+
+startdocker -u " -v /gdata/gaocs:/gdata/gaocs  -v /gdata1/gaocs:/gdata1/gaocs -v /gpub:/gpub " \
+            -P /ghome/gaocs \
+            -s "/ghome/gaocs/FCM-UFC/job/dinov2_cls.sh" \
+            bit:5000/liuzj_dinov2:v1
+

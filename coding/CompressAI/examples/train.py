@@ -339,7 +339,7 @@ def main(argv):
     # train_dataset = FeatureFolder(args.dataset, split="train")
     # test_dataset = FeatureFolder(args.dataset, split="test")
 
-    all_datasets = args.dataset.split(",")
+    all_datasets = args.dataset.split(","); print(all_datasets)
     train_dataset = ConcatFeatureFolder(all_datasets, split="train")
     test_dataset = ConcatFeatureFolder(all_datasets, split="test")
     
@@ -385,14 +385,17 @@ def main(argv):
         # optimizer.param_groups[0]['lr'] = args.learning_rate; print('Use the re-initilized learning rate')
 
     lr_end_threshold = 2e-4
-    lr_patience = 6
+    lr_patience = 5
     lr_patience_counter = 0
     lr_below_threshold = False
 
     best_loss = float("inf")
-    for epoch in range(last_epoch, args.epochs):
+    epoch = last_epoch
+
+    # for epoch in range(last_epoch, args.epochs):
+    while True:
         current_lr = optimizer.param_groups[0]['lr']
-        print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
+        print(f"Learning rate: {current_lr}")
         train_one_epoch(
             net,
             criterion,
@@ -473,6 +476,6 @@ def main(argv):
                         )
                         print("Stopping training due to low learning rate.")
                         break
-
+        epoch += 1
 if __name__ == "__main__":
     main(sys.argv[1:])

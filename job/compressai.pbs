@@ -1,6 +1,6 @@
-#PBS -N hybrid_hyper
-#PBS -o /ghome/gaocs/FCM-UFC/err_out/hybrid_hyper.out
-#PBS -e /ghome/gaocs/FCM-UFC/err_out/hybrid_hyper.err
+#PBS -N hybrid_hyper_0.001
+#PBS -o /ghome/gaocs/FCM-UFC/err_out/hybrid_hyper_0.001.out
+#PBS -e /ghome/gaocs/FCM-UFC/err_out/hybrid_hyper_0.001.err
 #PBS -l nodes=1:gpus=1:A,walltime=350:00:00
 #PBS -r y
 cd $PBS_O_WORKDIR
@@ -11,11 +11,12 @@ cat $PBS_NODEFILE
 cat $PBS_GPUFILE
 
 # bmshj2018-hyperprior elic2022-official 
+# ./compressai.sh train bmshj2018-hyperprior hybrid hybrid kmeans 10 8 0.001 1000 1000 1e-4 180 256-256 None
 
 startdocker -u " -v /gdata/gaocs:/gdata/gaocs  -v /gdata1/gaocs:/gdata1/gaocs -v /gdata2/gaocs:/gdata2/gaocs --shm-size=16g " \
     -P /ghome/gaocs \
     -s "/ghome/gaocs/FCM-UFC/job/compressai.sh \
-        test \
+        train_test \
         bmshj2018-hyperprior \
         hybrid \
         hybrid \
@@ -23,10 +24,10 @@ startdocker -u " -v /gdata/gaocs:/gdata/gaocs  -v /gdata1/gaocs:/gdata1/gaocs -v
         10 \
         8 \
         0.001 \
-        600
-        600
+        1000
+        1000
         1e-4
-        360
+        180
         256-256 \
         None" \
     bit:5000/gaocs_compressai_llama3_container:2.1.1-cuda12.1-cudnn8-runtime

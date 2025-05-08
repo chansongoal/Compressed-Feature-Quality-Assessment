@@ -511,7 +511,7 @@ def transform_evaluation(transform_type, samples, bit_depth):
     source_img_path = '/gdata/gaocs/dataset/VOC2012'
     source_split_name = f'/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/seg/source/seg_val_100.txt'
     org_feature_path = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/seg/feature'
-    root_path = f'/gdata1/gaocs/Data_DTUFC/inverse_transformed'; print('root_path: ', root_path)
+    root_path = f'/gdata1/gaocs/Data_FQA/inverse_transformed'; print('root_path: ', root_path)
     
     # Load configuration
     cfg = mmcv.Config.fromfile(config_path)
@@ -636,9 +636,10 @@ if __name__ == "__main__":
     batch_size = args.batch_size
     patch_size = args.patch_size
     
-    compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
+    # compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
 
     # for inverse transformed evaluation
     transform_type = 'kmeans'; samples = 10; bit_depth = 8
     transform_evaluation(transform_type, samples, bit_depth)
-
+    transform_type = 'kmeans'; samples = 10; bit_depth = 10
+    transform_evaluation(transform_type, samples, bit_depth)
