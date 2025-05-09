@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 from functools import partial
 from typing import Tuple, List
-
+import argparse
 
 import torch
 import torch.nn.functional as F
@@ -189,15 +189,15 @@ def dpt_pipeline(config_path: str, backbone_checkpoint_path: str, head_checkpoin
     print(f"Feature MSE: {feat_mse:.8f}")
 
 
-def hyperprior_baseline_evaluation():
+def compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size):
     # Set up paths
     config_path = 'cfg/dinov2_vitg14_nyu_linear4_config.py'
-    backbone_checkpoint_path = '/home/gaocs/models/dinov2/dinov2_vitg14_pretrain.pth'
-    head_checkpoint_path = "/home/gaocs/models/dinov2/dinov2_vitg14_nyu_linear4_head.pth"
-    source_img_path = '/home/gaocs/projects/FCM-LM/Data/dinov2/dpt/source/NYU_Test'
-    source_split_name = 'nyu_test_80.txt'  # put it at the same folder as the source_img_path
-    org_feature_path = "/home/gaocs/projects/FCM-LM/Data/dinov2/dpt/feature_test_80"
-    root_path = f'/home/gaocs/projects/FCM-LM/Data/dinov2/dpt/hyperprior'; print('root_path: ', root_path)
+    backbone_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_pretrain.pth'
+    head_checkpoint_path = "/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_nyu_linear4_head.pth"
+    source_img_path = '/gdata/gaocs/dataset/nyu'
+    source_split_name = 'nyu_test_100.txt'  # put it at the same folder as the source_img_path
+    org_feature_path = "/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/dpt/feature"
+    root_path = f'/gdata1/gaocs/Data_FQA/decoded'; print('root_path: ', root_path)
 
     # Load configuration
     cfg = mmcv.Config.fromfile(config_path)
@@ -221,42 +221,61 @@ def hyperprior_baseline_evaluation():
     )
 
     # Evaluate and print results
-    max_v = [3.2777, 5.0291, 25.0456, 102.0307]; min_v = [-2.4246, -26.8908, -323.2952, -504.4310]; trun_high = [1,2,10,10]; trun_low = [-1,-2,-10,-10]
-    lambda_value_all = [0.001, 0.005, 0.02, 0.05, 0.12]
-    epochs = 200; learning_rate = "1e-4"; batch_size = 128; patch_size = "256 256"   # height first, width later
-
-    trun_flag = True
-    samples = 0; bit_depth = 1; quant_type = 'uniform'
-
-    if trun_flag == False: trun_high = max_v; trun_low = min_v
-
     for lambda_value in lambda_value_all:
-        print(trun_low, trun_high, samples, bit_depth, quant_type, lambda_value)
-        if isinstance(trun_low, list):
-            trun_low = '[' + ','.join(map(str, trun_low)) + ']'
-            trun_high = '[' + ','.join(map(str, trun_high)) + ']'
-        rec_feature_path = f"{root_path}/decoded/trunl{trun_low}_trunh{trun_high}_{quant_type}{samples}_bitdepth{bit_depth}/lambda{lambda_value}_epoch{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size.replace(' ', '-')}"
+        print(source_split_name)
+        print(arch, train_task, transform_type, samples, bit_depth, lambda_value, epochs, learning_rate, batch_size, patch_size)
+
+        rec_feature_path = f"{root_path}/{arch}/trained_{train_task}/{transform_type}{samples}_bitdepth{bit_depth}/dinov2_dpt/" \
+                           f"lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size.replace(' ', '-')}"
+
         results, feat_mse = evaluate_depth(model, data_loader, org_feature_path, rec_feature_path, backbone_model)
 
         # # print("a1, a2, a3, abs_rel, rmse, log_10, rmse_log, silog, sq_rel")
-        print(f"\nRMSE: {results[0][4]:.8f}")
-        print(f"Feature MSE: {feat_mse:.8f}")
+        print(f"RMSE: {results[0][4]:.8f}")
+        print(f"Feature MSE: {feat_mse:.8f}\n")
 
-# # run below to evaluate the reconstructed features
-# if __name__ == "__main__":
-#     vtm_baseline_evaluation()
-#     # hyperprior_baseline_evaluation()
-
-# run below to extract original features as the dataset. 
-# You can skip feature extraction if you have download the test dataset from https://drive.google.com/drive/folders/1RZFGlBd6wZr4emuGO4_YJWfKPtAwcMXQ
-if __name__ == "__main__":
-    config_path = 'cfg/dinov2_vitg14_nyu_linear4_config.py'
-    backbone_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_pretrain.pth'
-    head_checkpoint_path = "/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_nyu_linear4_head.pth"
-    source_img_path = '/gdata/gaocs/dataset/nyu'
-    source_split_name = 'nyu_test_80.txt'
-    # source_split_name = 'nyu_train.txt'
-    org_feature_path = "/gdata1/gaocs/Data_FQA/inverse_transformed/dinov2_dpt/kmeans10_bitdepth8"
-    rec_feature_path = org_feature_path
+def argument_parsing():
+    parser = argparse.ArgumentParser(description="Train Evaluation Pipeline")
+    parser.add_argument('--arch', type=str, default='bmshj2018-hyperprior', help='arch')
+    parser.add_argument('--train_task', type=str, default='seg', help='train_task')
+    parser.add_argument('--transform_type', type=str, default='kmeans', help='transform_type')
+    parser.add_argument('--samples', type=int, default=10, help='samples')
+    parser.add_argument('--bit_depth', type=int, default=8, help='bit_depth')
+    parser.add_argument('--lambda_value_all', nargs='+', type=float, help='lambda_value_all')
+    parser.add_argument('--epochs', type=int, default=200, help='epochs')
+    parser.add_argument('--learning_rate', type=float, default=0.0001, help='learning_rate')
+    parser.add_argument('--batch_size', type=int, default=16, help='batch_size')
+    parser.add_argument('--patch_size', type=str, default='256-256', help='patch_size')
     
-    dpt_pipeline(config_path, backbone_checkpoint_path, head_checkpoint_path, source_img_path, source_split_name, org_feature_path, rec_feature_path)
+    args = parser.parse_args()
+    
+    return args
+
+if __name__ == "__main__":
+    args = argument_parsing()
+    arch = args.arch
+    transform_type = args.transform_type
+    samples = args.samples
+    bit_depth = args.bit_depth
+    train_task = args.train_task
+    lambda_value_all = args.lambda_value_all
+    epochs = args.epochs
+    learning_rate = args.learning_rate
+    batch_size = args.batch_size
+    patch_size = args.patch_size
+
+    compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
+
+# # run below to extract original features as the dataset. 
+# # You can skip feature extraction if you have download the test dataset from https://drive.google.com/drive/folders/1RZFGlBd6wZr4emuGO4_YJWfKPtAwcMXQ
+# if __name__ == "__main__":
+#     config_path = 'cfg/dinov2_vitg14_nyu_linear4_config.py'
+#     backbone_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_pretrain.pth'
+#     head_checkpoint_path = "/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_nyu_linear4_head.pth"
+#     source_img_path = '/gdata/gaocs/dataset/nyu'
+#     source_split_name = 'nyu_test_80.txt'
+#     # source_split_name = 'nyu_train.txt'
+#     org_feature_path = "/gdata1/gaocs/Data_FQA/inverse_transformed/dinov2_dpt/kmeans10_bitdepth8"
+#     rec_feature_path = org_feature_path
+    
+#     dpt_pipeline(config_path, backbone_checkpoint_path, head_checkpoint_path, source_img_path, source_split_name, org_feature_path, rec_feature_path)

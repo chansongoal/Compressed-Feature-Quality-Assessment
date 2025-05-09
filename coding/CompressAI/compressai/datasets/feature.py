@@ -44,15 +44,16 @@ class FeatureFolder(Dataset):
         split (string): split mode ('train' or 'test')
     """
 
-    def __init__(self, root, split="train"):
+    def __init__(self, root, split="train", suffix='.npy'):
         splitdir = Path(root) / split
 
         if not splitdir.is_dir():
             raise RuntimeError(f'Missing directory "{splitdir}"')
 
-        self.samples = sorted(f for f in splitdir.iterdir() if f.is_file())
+        # self.samples = sorted(f for f in splitdir.iterdir() if f.is_file())
+        self.samples = sorted([f for f in splitdir.iterdir() if f.is_file() and f.name.endswith(suffix)])
         #gcs
-        self.samples = self.samples[:32]
+        # self.samples = self.samples[:320]
 
     def __getitem__(self, index):
         # Load feature, use float32 for training
@@ -75,10 +76,10 @@ class ConcatFeatureFolder(Dataset):
         split (str): 'train' or 'test'
     """
 
-    def __init__(self, roots, split="train"):
+    def __init__(self, roots, split="train", suffix='.npy'):
         if isinstance(roots, str):
             roots = [roots]
-        self.datasets = [FeatureFolder(root, split=split) for root in roots]
+        self.datasets = [FeatureFolder(root, split=split, suffix=suffix) for root in roots]
         self.concat_dataset = ConcatDataset(self.datasets)
 
     def __getitem__(self, index):

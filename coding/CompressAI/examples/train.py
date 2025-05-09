@@ -85,12 +85,22 @@ def configure_optimizers(net, args):
     optimizer = net_aux_optimizer(net, conf)
     return optimizer["net"], optimizer["aux"]
 
+def safe_item(x):
+    if isinstance(x, torch.Tensor):
+        return x.detach().cpu().item()
+    else:
+        return float(x)
 
 def train_one_epoch(
     model, criterion, train_dataloader, optimizer, aux_optimizer, epoch, clip_max_norm
 ):
     model.train()
     device = next(model.parameters()).device
+
+    loss_epoch = AverageMeter()
+    bpp_loss_epoch = AverageMeter()
+    mse_loss_epoch = AverageMeter()
+    aux_loss_epoch = AverageMeter()
 
     for i, d in enumerate(train_dataloader):
         d = d.to(device)
@@ -110,17 +120,32 @@ def train_one_epoch(
         aux_loss.backward()
         aux_optimizer.step()
 
-        if i % 100 == 0:
-            print(
-                f"Train epoch {epoch}: ["
-                f"{i*len(d)}/{len(train_dataloader.dataset)}"
-                f" ({100. * i / len(train_dataloader):.0f}%)]"
-                f'\tLoss: {out_criterion["loss"].item():.7f} |'
-                f'\tMSE loss: {out_criterion["mse_loss"].item():.7f} |'
-                f'\tBpp loss: {out_criterion["bpp_loss"].item():.7f} |'
-                f"\tAux loss: {aux_loss.item():.2f}"
-            )
+        #gcs, update training loss
+        aux_loss_epoch.update(model.aux_loss())
+        bpp_loss_epoch.update(out_criterion["bpp_loss"])
+        loss_epoch.update(out_criterion["loss"])
+        mse_loss_epoch.update(out_criterion["mse_loss"])
 
+        # if i % 100 == 0:
+        #     print(
+        #         f"Train epoch {epoch}: ["
+        #         f"{i*len(d)}/{len(train_dataloader.dataset)}"
+        #         f" ({100. * i / len(train_dataloader):.0f}%)]"
+        #         f'\tLoss: {out_criterion["loss"].item():.7f} |'
+        #         f'\tMSE loss: {out_criterion["mse_loss"].item():.7f} |'
+        #         f'\tBpp loss: {out_criterion["bpp_loss"].item():.7f} |'
+        #         f"\tAux loss: {aux_loss.item():.2f}"
+        #     )
+    #gcs, print average training loss
+    print(
+        f"Train epoch {epoch}: Average losses:"
+        f"\tLoss: {loss_epoch.avg:.7f} |"
+        f"\tBPFP loss: {bpp_loss_epoch.avg:.7f} |"
+        f"\tMSE loss: {mse_loss_epoch.avg:.7f} |"
+        f"\tAux loss: {aux_loss_epoch.avg:.7f}"
+    ) 
+
+    return safe_item(loss_epoch.avg), safe_item(bpp_loss_epoch.avg), safe_item(mse_loss_epoch.avg), safe_item(aux_loss_epoch.avg)
 
 def test_epoch(epoch, test_dataloader, model, criterion):
     model.eval()
@@ -145,12 +170,13 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     print(
         f"Test epoch {epoch}: Average losses:"
         f"\tLoss: {loss.avg:.7f} |"
+        f"\tBPFP loss: {bpp_loss.avg:.7f} |"
         f"\tMSE loss: {mse_loss.avg:.7f} |"
-        f"\tBpp loss: {bpp_loss.avg:.7f} |"
-        f"\tAux loss: {aux_loss.avg:.4f}\n"
+        f"\tAux loss: {aux_loss.avg:.4f}"
     )
 
-    return loss.avg
+    # return loss.avg
+    return safe_item(loss.avg), safe_item(bpp_loss.avg), safe_item(mse_loss.avg), safe_item(aux_loss.avg)
 
 
 #gcs
@@ -290,7 +316,7 @@ def parse_args(argv):
     parser.add_argument(
         "--test-batch-size",
         type=int,
-        default=64,
+        default=128,
         help="Test batch size (default: %(default)s)",
     )
     parser.add_argument(
@@ -340,8 +366,13 @@ def main(argv):
     # test_dataset = FeatureFolder(args.dataset, split="test")
 
     all_datasets = args.dataset.split(","); print(all_datasets)
-    train_dataset = ConcatFeatureFolder(all_datasets, split="train")
-    test_dataset = ConcatFeatureFolder(all_datasets, split="test")
+    train_dataset = ConcatFeatureFolder(all_datasets, split="train", suffix='.npy')
+    cls_dataset = FeatureFolder(all_datasets[0], split="test", suffix='.npy')
+    seg_dataset = FeatureFolder(all_datasets[1], split="test", suffix='.npy')
+    dpt_layer10_dataset = FeatureFolder(all_datasets[2], split="test", suffix='layer10.npy')
+    dpt_layer20_dataset = FeatureFolder(all_datasets[2], split="test", suffix='layer20.npy')
+    dpt_layer30_dataset = FeatureFolder(all_datasets[2], split="test", suffix='layer30.npy')
+    dpt_layer40_dataset = FeatureFolder(all_datasets[2], split="test", suffix='layer40.npy')
     
     print(f"model_type={args.model_type}, train_task={args.train_task}, trun_flag={args.trun_flag}, trun_low={args.trun_low}, trun_high={args.trun_high}, transform_type={args.transform_type}, qsamples={args.qsamples}, bit_depth={args.bit_depth}, transform_mapping_name={args.transform_mapping_name}, patch_size={args.patch_size}, Prepro_flag={args.Prepro_flag}")
     device = "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
@@ -354,13 +385,12 @@ def main(argv):
         pin_memory=(device == "cuda"),
     )
 
-    test_dataloader = DataLoader(
-        test_dataset,
-        batch_size=args.test_batch_size,
-        num_workers=args.num_workers,
-        shuffle=False,
-        pin_memory=(device == "cuda"),
-    )
+    cls_loader = DataLoader(cls_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+    seg_loader = DataLoader(seg_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+    dpt_layer10_loader = DataLoader(dpt_layer10_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+    dpt_layer20_loader = DataLoader(dpt_layer20_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+    dpt_layer30_loader = DataLoader(dpt_layer30_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+    dpt_layer40_loader = DataLoader(dpt_layer40_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
 
     net = image_models[args.model](quality=1)   # set default quality level to 1
     net = net.to(device)
@@ -384,8 +414,8 @@ def main(argv):
         # gcs, init learning rate
         # optimizer.param_groups[0]['lr'] = args.learning_rate; print('Use the re-initilized learning rate')
 
-    lr_end_threshold = 2e-4
-    lr_patience = 5
+    lr_end_threshold = 2e-8
+    lr_patience = 20
     lr_patience_counter = 0
     lr_below_threshold = False
 
@@ -395,8 +425,8 @@ def main(argv):
     # for epoch in range(last_epoch, args.epochs):
     while True:
         current_lr = optimizer.param_groups[0]['lr']
-        print(f"Learning rate: {current_lr}")
-        train_one_epoch(
+        print(f"Epoch: {epoch}, Learning rate: {current_lr}")
+        train_loss, train_bpfp_loss, train_mse_loss, train_aux_loss = train_one_epoch(
             net,
             criterion,
             train_dataloader,
@@ -405,11 +435,31 @@ def main(argv):
             epoch,
             args.clip_max_norm,
         )
-        loss = test_epoch(epoch, test_dataloader, net, criterion)
-        lr_scheduler.step(loss)
+        # loss = test_epoch(epoch, test_dataloader, net, criterion)
+        val_loss_cls, val_bpfp_loss_cls, val_mse_loss_cls, val_aux_loss_cls = test_epoch(epoch, cls_loader, net, criterion)
+        val_loss_seg, val_bpfp_loss_seg, val_mse_loss_seg, val_aux_loss_seg = test_epoch(epoch, seg_loader, net, criterion)
+        val_loss_dpt_layer10, val_bpfp_loss_dpt_layer10, val_mse_loss_dpt_layer10, val_aux_loss_dpt_layer10 = test_epoch(epoch, dpt_layer10_loader, net, criterion)
+        val_loss_dpt_layer20, val_bpfp_loss_dpt_layer20, val_mse_loss_dpt_layer20, val_aux_loss_dpt_layer20 = test_epoch(epoch, dpt_layer20_loader, net, criterion)
+        val_loss_dpt_layer30, val_bpfp_loss_dpt_layer30, val_mse_loss_dpt_layer30, val_aux_loss_dpt_layer30 = test_epoch(epoch, dpt_layer30_loader, net, criterion)
+        val_loss_dpt_layer40, val_bpfp_loss_dpt_layer40, val_mse_loss_dpt_layer40, val_aux_loss_dpt_layer40 = test_epoch(epoch, dpt_layer40_loader, net, criterion)
 
-        is_best = loss < best_loss  # is this reasonable? what if MSE cannot measure semantic distortion?!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        best_loss = min(loss, best_loss)
+        val_loss = (val_loss_cls + val_loss_seg + val_loss_dpt_layer10 + val_loss_dpt_layer20 + val_loss_dpt_layer30 + val_loss_dpt_layer40) / 6
+        val_bpfp_loss = (val_bpfp_loss_cls + val_bpfp_loss_seg + val_bpfp_loss_dpt_layer10 + val_bpfp_loss_dpt_layer20 + val_bpfp_loss_dpt_layer30 + val_bpfp_loss_dpt_layer40) / 6
+        val_mse_loss = (val_mse_loss_cls + val_mse_loss_seg + val_mse_loss_dpt_layer10 + val_mse_loss_dpt_layer20 + val_mse_loss_dpt_layer30 + val_mse_loss_dpt_layer40) / 6
+        val_aux_loss = (val_aux_loss_cls + val_aux_loss_seg + val_aux_loss_dpt_layer10 + val_aux_loss_dpt_layer20 + val_aux_loss_dpt_layer30 + val_aux_loss_dpt_layer40) / 6
+
+        print(
+            f"Test epoch {epoch}: Average losses:"
+            f"\tLoss: {val_loss:.7f} |"
+            f"\tBPFP loss: {val_bpfp_loss:.7f} |"
+            f"\tMSE loss: {val_mse_loss:.7f} |"
+            f"\tAux loss: {val_aux_loss:.7f}"
+        )
+
+        lr_scheduler.step(val_loss)
+
+        is_best = val_loss < best_loss  # is this reasonable? what if MSE cannot measure semantic distortion?!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        best_loss = min(val_loss, best_loss)
 
         #gcs
         gc.collect()  # Run Python garbage collection
@@ -424,7 +474,7 @@ def main(argv):
                     {
                         "epoch": epoch,
                         "state_dict": net.state_dict(),
-                        "loss": loss,
+                        "loss": val_loss,
                         "optimizer": optimizer.state_dict(),
                         "aux_optimizer": aux_optimizer.state_dict(),
                         "lr_scheduler": lr_scheduler.state_dict(),
@@ -439,7 +489,7 @@ def main(argv):
                     {
                         "epoch": epoch,
                         "state_dict": net.state_dict(),
-                        "loss": loss,
+                        "loss": val_loss,
                         "optimizer": optimizer.state_dict(),
                         "aux_optimizer": aux_optimizer.state_dict(),
                         "lr_scheduler": lr_scheduler.state_dict(),
@@ -465,7 +515,7 @@ def main(argv):
                             {
                                 "epoch": epoch,
                                 "state_dict": net.state_dict(),
-                                "loss": loss,
+                                "loss": val_loss,
                                 "optimizer": optimizer.state_dict(),
                                 "aux_optimizer": aux_optimizer.state_dict(),
                                 "lr_scheduler": lr_scheduler.state_dict(),

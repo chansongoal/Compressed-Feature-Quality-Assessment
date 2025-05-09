@@ -546,7 +546,7 @@ def compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, 
     source_img_path = '/gdata/gaocs/dataset/VOC2012'
     source_split_name = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/seg/source/seg_val_100.txt'
     org_feature_path = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/seg/feature'
-    root_path = f'/gdata1/gaocs/Data_DTUFC/decoded'; print('root_path: ', root_path)
+    root_path = f'/gdata1/gaocs/Data_FQA/decoded'; print('root_path: ', root_path)
     
     # Load configuration
     cfg = mmcv.Config.fromfile(config_path)
@@ -560,39 +560,8 @@ def compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, 
     backbone_model = setup_backbone(backbone_checkpoint_path)
     model = build_segmentation_model(cfg, backbone_model, head_checkpoint_path)
     
-    if arch == 'hyperprior':
-        if train_task == 'csr':
-            lambda_value_all = [0.0005, 0.0008, 0.0017, 0.0019, 0.002, 0.0025, 0.003, 0.0035, 0.006]
-            epochs_all = [400, 400, 400, 400, 400, 400, 400, 400, 400]; 
-            batch_size_all = [128, 128, 128, 128, 128, 128, 128, 128, 128]
-            learning_rate = "0.0001";  patch_size = "64-1024"   # height first, width later
-        elif train_task == 'seg':
-            lambda_value_all = [0.0007,	0.0008, 0.0015, 0.002, 0.0025, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.015]
-            epochs_all = [200, 200, 200, 600, 600, 900, 600, 600, 1000, 1000, 1200, 1000]
-            batch_size_all = [128, 128,	128, 128, 128, 128, 128, 128, 128, 128, 128, 128]
-            patch_size = "256-256"; learning_rate = "0.0001"
-        elif train_task == 'tti':
-            lambda_value_all = [0.001, 0.002, 0.004, 0.006, 0.008, 0.01, 0.015, 0.02, 0.05]
-            epochs_all = [600, 600, 600, 600, 600, 600, 600, 600, 600]
-            batch_size_all = [32, 32, 32, 32, 32, 32, 32, 32, 32]
-            patch_size = "512-512"; learning_rate = '0.0001'
-        elif train_task == 'hybrid':
-            lambda_value_all = [0.0005,	0.0008,	0.001, 0.0013, 0.0015, 0.0018, 0.0019, 0.002, 0.0021, 0.0023, 0.0025, 0.0028, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.02]
-            epochs_all = [600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600]
-            batch_size_all = [360, 180, 360, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 360, 180, 180, 360, 180]
-            patch_size = "256-256"; learning_rate = '0.0001'      
-    elif arch == 'elic':
-        if train_task == 'hybrid':
-            lambda_value_all = [0.0001,	0.0003,	0.0005,	0.0008,	0.001, 0.0015, 0.0019, 0.0021, 0.0025, 0.003, 0.004, 0.005, 0.007, 0.008, 0.01, 0.015, 0.02]
-            epochs_all = [600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600]
-            batch_size_all = [120, 60, 120, 60, 60, 60, 60, 60, 60, 60, 60, 120, 60, 60, 60, 60, 60]
-            patch_size = "256-256"; learning_rate = '0.0001'
-
     # Evaluate and print results
     for idx, lambda_value in enumerate(lambda_value_all):
-        epochs = epochs_all[idx]
-        batch_size = batch_size_all[idx]
-
         print(source_split_name)
         print(arch, train_task, transform_type, samples, bit_depth, lambda_value, epochs, learning_rate, batch_size, patch_size)
         
@@ -636,10 +605,10 @@ if __name__ == "__main__":
     batch_size = args.batch_size
     patch_size = args.patch_size
     
-    # compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
+    compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
 
-    # for inverse transformed evaluation
-    transform_type = 'kmeans'; samples = 10; bit_depth = 8
-    transform_evaluation(transform_type, samples, bit_depth)
-    transform_type = 'kmeans'; samples = 10; bit_depth = 10
-    transform_evaluation(transform_type, samples, bit_depth)
+    # # for inverse transformed evaluation
+    # transform_type = 'kmeans'; samples = 10; bit_depth = 8
+    # transform_evaluation(transform_type, samples, bit_depth)
+    # transform_type = 'kmeans'; samples = 10; bit_depth = 10
+    # transform_evaluation(transform_type, samples, bit_depth)

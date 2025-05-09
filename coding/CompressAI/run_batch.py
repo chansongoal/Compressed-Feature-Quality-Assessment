@@ -146,17 +146,17 @@ def compressai_train(train_data_root, data_root, \
     os.system(train_cmd)
     print('training time: ', time.time() - time_start)
 
-    training_log_path = f"{data_root}/training_log/{arch_name}/trained_{train_task}/{transform_type}{samples}_bitdepth{bit_depth}"
-    train_config = f"train_{arch_name}_lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size.replace(' ', '-')}"
-    plot_train_loss(training_log_path, train_config)
+    # training_log_path = f"{data_root}/training_log/{arch_name}/trained_{train_task}/{transform_type}{samples}_bitdepth{bit_depth}"
+    # train_config = f"train_{arch_name}_lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size.replace(' ', '-')}"
+    # plot_train_loss(training_log_path, train_config)
 
 def compressai_test(test_data_root, data_root, \
                     trun_flag, transform_type, samples, bit_depth, \
                     train_task, \
                     arch, arch_name, lambda_value, epochs, learning_rate, batch_size, patch_size):
 
-    # test_task_all = ['cls', 'seg', 'dpt']
-    test_task_all = ['cls']
+    test_task_all = ['cls', 'seg', 'dpt']
+    # test_task_all = ['cls']
 
     for idx, test_task in enumerate(test_task_all):
         if test_task == 'cls': test_model_type = 'dinov2'; source_file = 'imagenet_selected_label100.txt'; trun_high = 94.15; trun_low = -542.31

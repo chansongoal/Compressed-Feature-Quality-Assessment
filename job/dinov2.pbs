@@ -1,6 +1,6 @@
-#PBS -N cls_eval
-#PBS -o /ghome/gaocs/FCM-UFC/err_out/cls_eval.out
-#PBS -e /ghome/gaocs/FCM-UFC/err_out/cls_eval.err
+#PBS -N dinov2_eval
+#PBS -o /ghome/gaocs/FCM-UFC/err_out/dinov2_eval.out
+#PBS -e /ghome/gaocs/FCM-UFC/err_out/dinov2_eval.err
 #PBS -l nodes=1:gpus=1:A,walltime=350:00:00
 #PBS -r y
 cd $PBS_O_WORKDIR
@@ -13,6 +13,6 @@ cat $PBS_GPUFILE
 
 startdocker -u " -v /gdata/gaocs:/gdata/gaocs  -v /gdata1/gaocs:/gdata1/gaocs -v /gpub:/gpub " \
             -P /ghome/gaocs \
-            -s "/ghome/gaocs/FCM-UFC/job/dinov2_cls.sh hyperprior hybrid kmeans 10 8 0.0001 1000 180 256-256 0.0005 0.001 0.01" \
+            -s "/ghome/gaocs/FCM-UFC/job/dinov2.sh hyperprior hybrid kmeans 10 8 0.0001 1000 180 256-256 0.0005 0.001 0.003 0.01" \
             bit:5000/liuzj_dinov2:v1
 

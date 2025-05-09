@@ -11,7 +11,7 @@ from dinov2.hub.classifiers import dinov2_vitg14_lc
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning) # Disable xFormers UserWarning
 os.environ['USE_XFORMERS'] = '0'    # Disable xFormers to obtain/extract consistent features in multiple runs
-
+import argparse
 
 class DataFolder(datasets.ImageFolder):
     """Custom dataset class that includes the file path in the returned sample."""
@@ -174,7 +174,7 @@ def cls_pipeline(backbone_checkpoint_path: str, head_checkpoint_path: str, sourc
     model.to(device)
 
     # Extract features
-    extract_features(model, test_dataloader, org_feature_path)
+    # extract_features(model, test_dataloader, org_feature_path)
 
     # # Evaluate and print results
     # acc, feat_mse = evaluate_cls(model, org_feature_path, rec_feature_path, source_label_name)
@@ -204,47 +204,70 @@ def transform_evaluation(transform_type, samples, bit_depth, source_name):
     print(f"Classification Accuracy: {acc:.4f}")
     print(f"Feature MSE: {feat_mse:.8f}")
 
-def hyperprior_baseline_evaluation():
+def compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size):
     # Set up paths
-    backbone_checkpoint_path = '/home/gaocs/models/dinov2/dinov2_vitg14_pretrain.pth'
-    head_checkpoint_path = '/home/gaocs/models/dinov2/dinov2_vitg14_cls_linear_head.pth'
-    source_img_path = '/home/gaocs/projects/FCM-LM/Data/dinov2/cls/source/ImageNet_Selected500'
-    source_label_name = '/home/gaocs/projects/FCM-LM/Data/dinov2/cls/source/imagenet_selected_label500.txt'
-    org_feature_path = '/home/gaocs/projects/FCM-LM/Data/dinov2/cls/feature_test_500'
-    root_path = f'/home/gaocs/projects/FCM-LM/Data/dinov2/cls/hyperprior'; print('root_path: ', root_path)
+    backbone_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_pretrain.pth'
+    head_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_cls_linear_head.pth'
+    source_img_path = '/gpub/imagenet_raw/test'
+    source_label_name = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/cls/source/imagenet_selected_label100.txt'
+    org_feature_path = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/cls/feature'
+    root_path = f'/gdata1/gaocs/Data_FQA/decoded'; print('root_path: ', root_path)
 
     # Initialize the model
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = dinov2_vitg14_lc(layers=1, pretrained=True, weights=[backbone_checkpoint_path, head_checkpoint_path])
     model.to(device)
-
+    
     # Evaluate and print results
-    max_v = 104.1752; min_v = -552.451; trun_high = 5; trun_low = -5
-    epochs = 800; learning_rate="1e-4"; batch_size = 128; patch_size = "256 256"
-    lambda_value_all = [0.001, 0.0017, 0.003, 0.0035, 0.01]
-
-    trun_flag = True
-    samples = 0; bit_depth = 1; quant_type = 'uniform'
-
-    if trun_flag == False: trun_high = max_v; trun_low = min_v
-
     for lambda_value in lambda_value_all:
-        print(trun_low, trun_high, samples, bit_depth, quant_type, lambda_value)
-        rec_feature_path = f"{root_path}/decoded/trunl{trun_low}_trunh{trun_high}_{quant_type}{samples}_bitdepth{bit_depth}/lambda{lambda_value}_epoch{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size.replace(' ', '-')}"
+        print(source_label_name)
+        print(arch, train_task, transform_type, samples, bit_depth, lambda_value, epochs, learning_rate, batch_size, patch_size)
+
+        rec_feature_path = f"{root_path}/{arch}/trained_{train_task}/{transform_type}{samples}_bitdepth{bit_depth}/dinov2_cls/" \
+                           f"lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size.replace(' ', '-')}"
+        
         acc, feat_mse = evaluate_cls(model, org_feature_path, rec_feature_path, source_label_name)
-        print(f"Classification Accuracy: {acc:.4f}")
-        print(f"Feature MSE: {feat_mse:.8f}")
+        print(f"Accuracy: {acc:.4f}")
+        print(f"Feature MSE: {feat_mse:.8f}\n")
+
+def argument_parsing():
+    parser = argparse.ArgumentParser(description="Train Evaluation Pipeline")
+    parser.add_argument('--arch', type=str, default='bmshj2018-hyperprior', help='arch')
+    parser.add_argument('--train_task', type=str, default='seg', help='train_task')
+    parser.add_argument('--transform_type', type=str, default='kmeans', help='transform_type')
+    parser.add_argument('--samples', type=int, default=10, help='samples')
+    parser.add_argument('--bit_depth', type=int, default=8, help='bit_depth')
+    parser.add_argument('--lambda_value_all', nargs='+', type=float, help='lambda_value_all')
+    parser.add_argument('--epochs', type=int, default=200, help='epochs')
+    parser.add_argument('--learning_rate', type=float, default=0.0001, help='learning_rate')
+    parser.add_argument('--batch_size', type=int, default=16, help='batch_size')
+    parser.add_argument('--patch_size', type=str, default='256-256', help='patch_size')
+    
+    args = parser.parse_args()
+    
+    return args
 
 # run below to evaluate the reconstructed features
 if __name__ == "__main__":
-    # vtm_baseline_evaluation()
-    # hyperprior_baseline_evaluation()
+    args = argument_parsing()
+    arch = args.arch
+    transform_type = args.transform_type
+    samples = args.samples
+    bit_depth = args.bit_depth
+    train_task = args.train_task
+    lambda_value_all = args.lambda_value_all
+    epochs = args.epochs
+    learning_rate = args.learning_rate
+    batch_size = args.batch_size
+    patch_size = args.patch_size
 
-    source_name = 'imagenet_selected_label100.txt'
-    transform_type = 'kmeans'; samples = 10; bit_depth = 8
-    transform_evaluation(transform_type, samples, bit_depth, source_name)
-    transform_type = 'kmeans'; samples = 10; bit_depth = 10
-    transform_evaluation(transform_type, samples, bit_depth, source_name)
+    compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
+
+    # source_name = 'imagenet_selected_label100.txt'
+    # transform_type = 'kmeans'; samples = 10; bit_depth = 8
+    # transform_evaluation(transform_type, samples, bit_depth, source_name)
+    # transform_type = 'kmeans'; samples = 10; bit_depth = 10
+    # transform_evaluation(transform_type, samples, bit_depth, source_name)
 
 # # run below to extract original features as the dataset. 
 # # You can skip feature extraction if you have download the test dataset from https://drive.google.com/drive/folders/1RZFGlBd6wZr4emuGO4_YJWfKPtAwcMXQ

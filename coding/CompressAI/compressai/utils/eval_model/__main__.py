@@ -99,6 +99,41 @@ def compute_metrics(
     return metrics
 
 
+def save_bitstream(path, strings, shape):
+    y_string = strings[0][0]  # bitstream for a single sample
+    z_string = strings[1][0]
+
+    with open(path, "wb") as f:
+        # write shape (H, W), each 2 bytes
+        f.write(shape[0].to_bytes(2, 'big'))
+        f.write(shape[1].to_bytes(2, 'big'))
+
+        # write z_string: shape and content
+        f.write(len(z_string).to_bytes(4, 'big'))
+        f.write(z_string)
+
+        # write y_string: shape and content
+        f.write(len(y_string).to_bytes(4, 'big'))
+        f.write(y_string)
+
+def load_bitstream(path):
+    with open(path, "rb") as f:
+        # read shape
+        H = int.from_bytes(f.read(2), 'big')
+        W = int.from_bytes(f.read(2), 'big')
+        shape = (H, W)
+
+        # read z_string
+        z_len = int.from_bytes(f.read(4), 'big')
+        z_string = f.read(z_len)
+
+        # read y_string
+        y_len = int.from_bytes(f.read(4), 'big')
+        y_string = f.read(y_len)
+
+    # retrun model.decompress 
+    return [ [y_string], [z_string] ], shape
+
 @torch.no_grad()
 #gcs
 def inference(model, x, vbr_stage=None, vbr_scale=None):
@@ -121,10 +156,10 @@ def inference(model, x, vbr_stage=None, vbr_scale=None):
     # latent_space = out_enc["latent"]  
     # # print("Shape of latent_space:", latent_space.shape)
     # x_latent = latent_space[0]
-    # save_dir = "/gdata1/gaocs/Data_FCM_NQ/sd3/tti/hyperprior/encoding_log/trunl-5.79_trunh4.46_kmeans10_bitdepth8/"
-    # x_latent_cpu = x_latent.cpu().numpy()
-    # save_path = os.path.join(save_dir, "x_latent_cpu.npy")
-    # np.save(save_path, x_latent_cpu)
+
+    #gcs, save bitstream
+    # save_bitstream('/gdata1/gaocs/Data_FQA/encoding_log/hyperprior/trained_hybrid/kmeans10_bitdepth8/dinov2_cls/bistream.bin', out_enc["strings"], out_enc["shape"])
+    # out_enc["strings"], out_enc["shape"] = load_bitstream('/gdata1/gaocs/Data_FQA/encoding_log/hyperprior/trained_hybrid/kmeans10_bitdepth8/dinov2_cls/bistream.bin')
 
     start = time.time()
     out_dec = (
@@ -248,6 +283,7 @@ def eval_model(
 
     source_file = args['source_file']
     filepaths = get_feature_names(args['dataset'], source_file)
+    # filepaths = filepaths[:1]
     print(f"{len(filepaths)} features in {args['dataset']} are tested.")
     for filepath in filepaths:
         #gcs, load feature in the same way of training
