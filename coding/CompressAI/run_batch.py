@@ -205,52 +205,6 @@ def compressai_pipeline(pipeline_config, train_data_root, test_data_root, data_r
                         train_task, \
                         arch, arch_name, lambda_value, epochs, learning_rate, batch_size, patch_size)
 
-def compressai_test_multiple(pipeline_config, train_data_root, test_data_root, data_root, \
-                            transform_type, samples, bit_depth, \
-                            train_model_type, train_task, \
-                            arch, lambda_value, epochs, save_period, learning_rate, batch_size, patch_size, pretrained_model):
-    if arch == 'bmshj2018-hyperprior':
-        arch_name = 'hyperprior'; print(arch_name)
-    elif arch == 'elic2022-official':
-        arch_name = 'elic'; print(arch_name)
-    trun_flag = 'False'
-
-    if arch_name == 'hyperprior':
-        if train_task == 'csr':
-            lambda_value_all = [0.0005, 0.0008, 0.0017, 0.0019, 0.002, 0.0025, 0.003, 0.0035, 0.006]
-            epochs_all = [400, 400, 400, 400, 400, 400, 400, 400, 400]; 
-            batch_size_all = [128, 128, 128, 128, 128, 128, 128, 128, 128]
-            learning_rate = "0.0001";  patch_size = "64-1024"   # height first, width later
-        elif train_task == 'seg':
-            lambda_value_all = [0.0007,	0.0008, 0.0015, 0.002, 0.0025, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.015]
-            epochs_all = [200, 200, 200, 600, 600, 900, 600, 600, 1000, 1000, 1200, 1000]
-            batch_size_all = [128, 128,	128, 128, 128, 128, 128, 128, 128, 128, 128, 128]
-            patch_size = "256-256"; learning_rate = "0.0001"
-        elif train_task == 'tti':
-            lambda_value_all = [0.001, 0.002, 0.004, 0.006, 0.008, 0.01, 0.015, 0.02, 0.05]
-            epochs_all = [600, 600, 600, 600, 600, 600, 600, 600, 600]
-            batch_size_all = [32, 32, 32, 32, 32, 32, 32, 32, 32]
-            patch_size = "512-512"; learning_rate = '0.0001'
-        elif train_task == 'hybrid':
-            lambda_value_all = [0.0005,	0.0008,	0.001, 0.0013, 0.0015, 0.0018, 0.0019, 0.002, 0.0021, 0.0023, 0.0025, 0.0028, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.02]
-            epochs_all = [600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600]
-            batch_size_all = [360, 180, 360, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 180, 360, 180, 180, 360, 180]
-            patch_size = "256-256"; learning_rate = '0.0001'
-    elif arch_name == 'elic':
-        if train_task == 'hybrid':
-            lambda_value_all = [0.0001,	0.0003,	0.0005,	0.0008,	0.001, 0.0015, 0.0019, 0.0021, 0.0025, 0.003, 0.004, 0.005, 0.007, 0.008, 0.01, 0.015, 0.02]
-            epochs_all = [600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600, 600]
-            batch_size_all = [120, 60, 120, 60, 60, 60, 60, 60, 60, 60, 60, 120, 60, 60, 60, 60, 60]
-            patch_size = "256-256"; learning_rate = '0.0001'
-    
-    for idx, lambda_value in enumerate(lambda_value_all):
-        epochs = epochs_all[idx]
-        batch_size = batch_size_all[idx]
-
-        compressai_test(test_data_root, data_root, \
-                            trun_flag, transform_type, samples, bit_depth, \
-                            train_task, \
-                            arch, arch_name, lambda_value, epochs, learning_rate, batch_size, patch_size)
 
 def argument_parsing():
     parser = argparse.ArgumentParser(description="Train Evaluation Pipeline")
@@ -299,8 +253,3 @@ if __name__ == "__main__":
                         transform_type, samples, bit_depth, \
                         train_model_type, train_task, \
                         arch, lambda_value, epochs, save_period, learning_rate, batch_size, patch_size, pretrained_model)
-
-    # compressai_test_multiple(pipeline_config, train_data_root, test_data_root, data_root, \
-    #                         transform_type, samples, bit_depth, \
-    #                         train_model_type, train_task, \
-    #                         arch, lambda_value, epochs, save_period, learning_rate, batch_size, patch_size, pretrained_model)
