@@ -1,6 +1,6 @@
-#PBS -N hybrid_elic_0.003
-#PBS -o /ghome/gaocs/FCM-UFC/err_out/hybrid_elic_0.003.out
-#PBS -e /ghome/gaocs/FCM-UFC/err_out/hybrid_elic_0.003.err
+#PBS -N CLS_hyper_0.0032
+#PBS -o /ghome/gaocs/FCM-UFC/err_out/CLS_hyper_0.0032.out
+#PBS -e /ghome/gaocs/FCM-UFC/err_out/CLS_hyper_0.0032.err
 #PBS -l nodes=1:gpus=1:A,walltime=350:00:00
 #PBS -r y
 cd $PBS_O_WORKDIR
@@ -10,25 +10,25 @@ echo This job runs on following nodes and gpus:
 cat $PBS_NODEFILE
 cat $PBS_GPUFILE
 
-# bmshj2018-hyperprior elic2022-official 
-# ./compressai.sh train bmshj2018-hyperprior hybrid hybrid kmeans 10 8 0.003 1000 1000 1e-4 180 256-256 None
+# bmshj2018-hyperprior elic2022-official cheng2020-anchor
+# ./compressai.sh train bmshj2018-hyperprior hybrid hybrid kmeans 10 8 0.00325 1000 1000 1e-4 180 256-256 None
 
 startdocker -u " -v /gdata/gaocs:/gdata/gaocs  -v /gdata1/gaocs:/gdata1/gaocs -v /gdata2/gaocs:/gdata2/gaocs --shm-size=16g " \
     -P /ghome/gaocs \
     -s "/ghome/gaocs/FCM-UFC/job/compressai.sh \
         train_test \
-        elic2022-official  \
-        hybrid \
-        hybrid \
+        bmshj2018-hyperprior  \
+        dinov2 \
+        cls \
         kmeans \
         10 \
         8 \
-        0.003 \
-        1000
+        0.0032 \
+        200
         1000
         1e-4
-        60
+        180
         256-256 \
-        None" \
+        /gdata1/gaocs/Data_FQA/training_models/hyperprior/trained_cls/kmeans10_bitdepth8/bmshj2018-hyperprior_lambda0.003_epochs1000_lr0.0001_bs180_patch256-256_checkpoint_best.pth.tar" \
     bit:5000/gaocs_compressai_llama3_container:2.1.1-cuda12.1-cudnn8-runtime
 

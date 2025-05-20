@@ -28,16 +28,28 @@ def generate_train_commands(train_data_root, data_root, \
         train_data_paths = f"{train_data_root}/{train_model_type}/{train_task}/{transform_type}{samples}_bitdepth{bit_depth}/crop_hgt{patch_size.split('-')[0]}_wdt{patch_size.split('-')[1]} "
     
     # generate train command
-    train_command = (
-        f"python examples/train.py --model {arch} "
-        f"-d {train_data_paths} "
-        f"--checkpoint {pretrained_model} "
-        f"--lambda {lambda_value} --epochs {epochs} --save_period={save_period} -lr {learning_rate} "
-        f"--batch-size {batch_size} --patch-size {patch_size.split('-')[0]} {patch_size.split('-')[1]} --cuda --save "
-        f"--model_type={train_model_type} --train_task={train_task} --trun_flag={trun_flag} --trun_low={trun_low} --trun_high={trun_high} --transform_type={transform_type} --qsamples={samples} --bit_depth={bit_depth} "
-        f"-mp {training_models_path}/{arch}_lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size}_checkpoint.pth.tar "
-        f">{training_log_path}/train_{arch_name}_lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size}.txt 2>&1"
-    )
+    if train_task == 'hybrid':
+        train_command = (
+            f"python examples/train.py --model {arch} "
+            f"-d {train_data_paths} "
+            f"--checkpoint {pretrained_model} "
+            f"--lambda {lambda_value} --epochs {epochs} --save_period={save_period} -lr {learning_rate} "
+            f"--batch-size {batch_size} --test-batch-size {batch_size} --patch-size {patch_size.split('-')[0]} {patch_size.split('-')[1]} --cuda --save "
+            f"--model_type={train_model_type} --train_task={train_task} --trun_flag={trun_flag} --trun_low={trun_low} --trun_high={trun_high} --transform_type={transform_type} --qsamples={samples} --bit_depth={bit_depth} "
+            f"-mp {training_models_path}/{arch}_lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size}_checkpoint.pth.tar "
+            f">{training_log_path}/train_{arch_name}_lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size}.txt 2>&1"
+        )
+    else:
+        train_command = (
+            f"python examples/train_single.py --model {arch} "
+            f"-d {train_data_paths} "
+            f"--checkpoint {pretrained_model} "
+            f"--lambda {lambda_value} --epochs {epochs} --save_period={save_period} -lr {learning_rate} "
+            f"--batch-size {batch_size} --test-batch-size {batch_size} --patch-size {patch_size.split('-')[0]} {patch_size.split('-')[1]} --cuda --save "
+            f"--model_type={train_model_type} --train_task={train_task} --trun_flag={trun_flag} --trun_low={trun_low} --trun_high={trun_high} --transform_type={transform_type} --qsamples={samples} --bit_depth={bit_depth} "
+            f"-mp {training_models_path}/{arch}_lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size}_checkpoint.pth.tar "
+            f">{training_log_path}/train_{arch_name}_lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size}.txt 2>&1"
+        )
 
     return train_command
 
@@ -130,10 +142,12 @@ def compressai_train(train_data_root, data_root, \
                      train_model_type, train_task, \
                      arch, arch_name, lambda_value, epochs, save_period, learning_rate, batch_size, patch_size, pretrained_model):
 
-    if train_task == 'seg': trun_high = 105.95; trun_low = -506.97
+    if train_task == 'cls': trun_high = 94.15; trun_low = -542.31
+    elif train_task == 'seg': trun_high = 105.95; trun_low = -506.97
+    elif train_task == 'dpt': trun_high = [3.27, 5.03, 25.05, 100.27]; trun_low = [-2.39, -26.44, -323.30, -504.44]
     elif train_task == 'csr': trun_high = 47.75; trun_low = -71.50
     elif train_task == 'tti': trun_high = 4.46; trun_low = -5.79
-    elif train_task == 'hybrid': trun_high = 105.95; trun_low = -506.97
+    elif train_task == 'hybrid': trun_high = 105.95; trun_low = -542.31
 
     train_cmd = generate_train_commands(train_data_root, data_root, \
                                         trun_flag, trun_high, trun_low, transform_type, samples, bit_depth, \
@@ -155,8 +169,8 @@ def compressai_test(test_data_root, data_root, \
                     train_task, \
                     arch, arch_name, lambda_value, epochs, learning_rate, batch_size, patch_size):
 
-    test_task_all = ['cls', 'seg', 'dpt']
-    # test_task_all = ['cls']
+    if train_task == 'hybrid': test_task_all = ['cls', 'seg', 'dpt']
+    else: test_task_all = [train_task]    # only test the trained task
 
     for idx, test_task in enumerate(test_task_all):
         if test_task == 'cls': test_model_type = 'dinov2'; source_file = 'imagenet_selected_label100.txt'; trun_high = 94.15; trun_low = -542.31
@@ -191,6 +205,8 @@ def compressai_pipeline(pipeline_config, train_data_root, test_data_root, data_r
         arch_name = 'hyperprior'; print(arch_name)
     elif arch == 'elic2022-official':
         arch_name = 'elic'; print(arch_name)
+    elif arch == 'cheng2020-anchor':
+        arch_name = 'cheng2020'; print(arch_name)
     trun_flag = 'False' if transform_type == 'kmeans' else 'True'
 
     if 'train' in pipeline_config:
@@ -249,6 +265,8 @@ if __name__ == "__main__":
     train_data_root = "/gdata1/gaocs/FCM_LM_Train_Data"
     test_data_root = "/gdata1/gaocs/FCM_LM_Test_Dataset"
 
+    # lambda_all = [0.0001, 0.0003, 0.0005, 0.0007, 0.0008, 0.001, 0.002]
+    # for lambda_value in lambda_all:
     compressai_pipeline(pipeline_config, train_data_root, test_data_root, data_root, \
                         transform_type, samples, bit_depth, \
                         train_model_type, train_task, \

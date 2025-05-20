@@ -53,7 +53,7 @@ class FeatureFolder(Dataset):
         # self.samples = sorted(f for f in splitdir.iterdir() if f.is_file())
         self.samples = sorted([f for f in splitdir.iterdir() if f.is_file() and f.name.endswith(suffix)])
         #gcs
-        # self.samples = self.samples[:320]
+        # self.samples = self.samples[:32]
 
     def __getitem__(self, index):
         # Load feature, use float32 for training

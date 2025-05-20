@@ -238,10 +238,12 @@ def load_checkpoint(arch: str, no_update: bool, checkpoint_path: str) -> nn.Modu
             state_dict = checkpoint[key]
     
     #gcs, remove "module."
-    # if arch == "bmshj2018-hyperprior":
-    #     prefix = "module."
-    #     state_dict = {key[len(prefix):]: value for key, value in state_dict.items() if key.startswith(prefix)}
-    # print(state_dict.keys())
+    if any(k.startswith("module.") for k in state_dict.keys()):
+        print("Detected 'module.' prefix in state_dict, removing it...")
+        state_dict = {
+            k.replace("module.", "", 1): v for k, v in state_dict.items()
+        }
+
     model_cls = architectures[arch]
     if arch in ["bmshj2018-hyperprior-vbr", "mbt2018-mean-vbr"]:
         net = model_cls.from_state_dict(state_dict, vr_entbttlnck=True)

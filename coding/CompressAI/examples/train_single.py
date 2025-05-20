@@ -191,6 +191,19 @@ def save_checkpoint(state, is_best, filename="checkpoint.pth.tar"):
         #gcs, remove duplicated filename
         os.remove(filename)
 
+# Custom type parsing function
+def parse_truncation(value):
+    try:
+        # Try to parse as a float
+        return float(value)
+    except ValueError:
+        # Try to parse as a list of floats (comma-separated)
+        try:
+            return [float(x) for x in value.strip('[]').split(',')]
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"Invalid input for --truncation: {value}. Must be a float or a list of floats."
+            )
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description="Example training script.")
@@ -234,16 +247,16 @@ def parse_args(argv):
     parser.add_argument(
         "-trun_low",
         "--trun_low",
-        type=float,
+        type=parse_truncation,
         default=-5,
-        help="Please input the truncated lower value.",
+        help="Please input the truncated upper value (float or list of floats).",
     )
     parser.add_argument(
         "-trun_high",
         "--trun_high",
-        type=float,
+        type=parse_truncation,
         default=5,
-        help="Please input the truncated upper value.",
+        help="Please input the truncated upper value (float or list of floats).",
     )
     parser.add_argument(
         "-transform_type",
@@ -368,12 +381,13 @@ def main(argv):
 
     all_datasets = args.dataset.split(","); print(all_datasets)
     train_dataset = ConcatFeatureFolder(all_datasets, split="train", suffix='.npy')
-    cls_dataset = FeatureFolder(all_datasets[0], split="test", suffix='.npy')
-    seg_dataset = FeatureFolder(all_datasets[1], split="test", suffix='.npy')
-    dpt_layer10_dataset = FeatureFolder(all_datasets[2], split="test", suffix='layer10.npy')
-    dpt_layer20_dataset = FeatureFolder(all_datasets[2], split="test", suffix='layer20.npy')
-    dpt_layer30_dataset = FeatureFolder(all_datasets[2], split="test", suffix='layer30.npy')
-    dpt_layer40_dataset = FeatureFolder(all_datasets[2], split="test", suffix='layer40.npy')
+    if args.train_task == 'cls': cls_dataset = FeatureFolder(all_datasets[0], split="test", suffix='.npy')
+    elif args.train_task == 'seg': seg_dataset = FeatureFolder(all_datasets[0], split="test", suffix='.npy')
+    elif args.train_task == 'dpt': 
+        dpt_layer10_dataset = FeatureFolder(all_datasets[0], split="test", suffix='layer10.npy')
+        dpt_layer20_dataset = FeatureFolder(all_datasets[0], split="test", suffix='layer20.npy')
+        dpt_layer30_dataset = FeatureFolder(all_datasets[0], split="test", suffix='layer30.npy')
+        dpt_layer40_dataset = FeatureFolder(all_datasets[0], split="test", suffix='layer40.npy')
     
     print(f"model_type={args.model_type}, train_task={args.train_task}, trun_flag={args.trun_flag}, trun_low={args.trun_low}, trun_high={args.trun_high}, transform_type={args.transform_type}, qsamples={args.qsamples}, bit_depth={args.bit_depth}, transform_mapping_name={args.transform_mapping_name}, patch_size={args.patch_size}, Prepro_flag={args.Prepro_flag}")
     device = "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
@@ -387,12 +401,13 @@ def main(argv):
     )
     print('num_workers: ', args.num_workers)
 
-    cls_loader = DataLoader(cls_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
-    seg_loader = DataLoader(seg_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
-    dpt_layer10_loader = DataLoader(dpt_layer10_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
-    dpt_layer20_loader = DataLoader(dpt_layer20_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
-    dpt_layer30_loader = DataLoader(dpt_layer30_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
-    dpt_layer40_loader = DataLoader(dpt_layer40_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+    if args.train_task == 'cls': cls_loader = DataLoader(cls_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+    elif args.train_task == 'seg': seg_loader = DataLoader(seg_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+    elif args.train_task == 'dpt': 
+        dpt_layer10_loader = DataLoader(dpt_layer10_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+        dpt_layer20_loader = DataLoader(dpt_layer20_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+        dpt_layer30_loader = DataLoader(dpt_layer30_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
+        dpt_layer40_loader = DataLoader(dpt_layer40_dataset, batch_size=args.test_batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=(device == "cuda"))
 
     net = image_models[args.model](quality=1)   # set default quality level to 1
     net = net.to(device)
@@ -461,17 +476,18 @@ def main(argv):
             args.clip_max_norm,
         )
         # loss = test_epoch(epoch, test_dataloader, net, criterion)
-        val_loss_cls, val_bpfp_loss_cls, val_mse_loss_cls, val_aux_loss_cls = test_epoch(epoch, cls_loader, net, criterion)
-        val_loss_seg, val_bpfp_loss_seg, val_mse_loss_seg, val_aux_loss_seg = test_epoch(epoch, seg_loader, net, criterion)
-        val_loss_dpt_layer10, val_bpfp_loss_dpt_layer10, val_mse_loss_dpt_layer10, val_aux_loss_dpt_layer10 = test_epoch(epoch, dpt_layer10_loader, net, criterion)
-        val_loss_dpt_layer20, val_bpfp_loss_dpt_layer20, val_mse_loss_dpt_layer20, val_aux_loss_dpt_layer20 = test_epoch(epoch, dpt_layer20_loader, net, criterion)
-        val_loss_dpt_layer30, val_bpfp_loss_dpt_layer30, val_mse_loss_dpt_layer30, val_aux_loss_dpt_layer30 = test_epoch(epoch, dpt_layer30_loader, net, criterion)
-        val_loss_dpt_layer40, val_bpfp_loss_dpt_layer40, val_mse_loss_dpt_layer40, val_aux_loss_dpt_layer40 = test_epoch(epoch, dpt_layer40_loader, net, criterion)
+        if args.train_task == 'cls': val_loss, val_bpfp_loss, val_mse_loss, val_aux_loss = test_epoch(epoch, cls_loader, net, criterion)
+        elif args.train_task == 'seg': val_loss, val_bpfp_loss, val_mse_loss, val_aux_loss = test_epoch(epoch, seg_loader, net, criterion)
+        elif args.train_task == 'dpt':
+            val_loss_dpt_layer10, val_bpfp_loss_dpt_layer10, val_mse_loss_dpt_layer10, val_aux_loss_dpt_layer10 = test_epoch(epoch, dpt_layer10_loader, net, criterion)
+            val_loss_dpt_layer20, val_bpfp_loss_dpt_layer20, val_mse_loss_dpt_layer20, val_aux_loss_dpt_layer20 = test_epoch(epoch, dpt_layer20_loader, net, criterion)
+            val_loss_dpt_layer30, val_bpfp_loss_dpt_layer30, val_mse_loss_dpt_layer30, val_aux_loss_dpt_layer30 = test_epoch(epoch, dpt_layer30_loader, net, criterion)
+            val_loss_dpt_layer40, val_bpfp_loss_dpt_layer40, val_mse_loss_dpt_layer40, val_aux_loss_dpt_layer40 = test_epoch(epoch, dpt_layer40_loader, net, criterion)
 
-        val_loss = (val_loss_cls + val_loss_seg + val_loss_dpt_layer10 + val_loss_dpt_layer20 + val_loss_dpt_layer30 + val_loss_dpt_layer40) / 6
-        val_bpfp_loss = (val_bpfp_loss_cls + val_bpfp_loss_seg + val_bpfp_loss_dpt_layer10 + val_bpfp_loss_dpt_layer20 + val_bpfp_loss_dpt_layer30 + val_bpfp_loss_dpt_layer40) / 6
-        val_mse_loss = (val_mse_loss_cls + val_mse_loss_seg + val_mse_loss_dpt_layer10 + val_mse_loss_dpt_layer20 + val_mse_loss_dpt_layer30 + val_mse_loss_dpt_layer40) / 6
-        val_aux_loss = (val_aux_loss_cls + val_aux_loss_seg + val_aux_loss_dpt_layer10 + val_aux_loss_dpt_layer20 + val_aux_loss_dpt_layer30 + val_aux_loss_dpt_layer40) / 6
+            val_loss = (val_loss_dpt_layer10 + val_loss_dpt_layer20 + val_loss_dpt_layer30 + val_loss_dpt_layer40) / 4
+            val_bpfp_loss = (val_bpfp_loss_dpt_layer10 + val_bpfp_loss_dpt_layer20 + val_bpfp_loss_dpt_layer30 + val_bpfp_loss_dpt_layer40) / 4
+            val_mse_loss = (val_mse_loss_dpt_layer10 + val_mse_loss_dpt_layer20 + val_mse_loss_dpt_layer30 + val_mse_loss_dpt_layer40) / 4
+            val_aux_loss = (val_aux_loss_dpt_layer10 + val_aux_loss_dpt_layer20 + val_aux_loss_dpt_layer30 + val_aux_loss_dpt_layer40) / 4
 
         print(
             f"Test epoch {epoch}: Average losses:"
