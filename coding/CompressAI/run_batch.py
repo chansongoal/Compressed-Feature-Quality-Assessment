@@ -79,63 +79,6 @@ def generate_eval_commands(test_data_root, data_root, \
 
     return eval_command
 
-def plot_train_loss(train_log_path, train_config):
-    # Read all content
-    log_name = os.path.join(train_log_path, train_config+'.txt')
-    pdf_name = os.path.join(train_log_path, train_config+'.pdf')
-    with open(log_name, 'r') as file:
-        file_content = file.read()
-
-    # Extract content that starts with "Test epoch"
-    test_epoch_lines = re.findall(r"Test epoch.*", file_content)
-
-    # Init
-    losses = []
-    mse_losses = []
-    bpp_losses = []
-    aux_losses = []
-
-    # Extract losses
-    for line in test_epoch_lines:
-        match = re.search(r"Loss:\s*([\d\.]+)\s*\|\s*MSE\s*loss:\s*([\d\.]+)\s*\|\s*Bpp\s*loss:\s*([\d\.]+)\s*\|\s*Aux\s*loss:\s*([\d\.]+)", line)
-        if match:
-            losses.append(float(match.group(1)))
-            mse_losses.append(float(match.group(2)))
-            bpp_losses.append(float(match.group(3)))
-            aux_losses.append(float(match.group(4)))
-
-    start = 0
-    losses = losses[start:]; mse_losses = mse_losses[start:]; bpp_losses = bpp_losses[start:]; aux_losses = aux_losses[start:]
-    epochs = range(len(losses))
-
-    plt.figure(figsize=(12,8))
-
-    plt.subplot(221)
-    plt.plot(epochs, losses, marker='o')
-    plt.title('Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-
-    plt.subplot(222)
-    plt.plot(epochs, mse_losses, marker='o')
-    plt.title('MSE Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('MSE Loss')
-
-    plt.subplot(223)
-    plt.plot(epochs, bpp_losses, marker='o')
-    plt.title('Bpp Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Bpp Loss')
-
-    plt.subplot(224)
-    plt.plot(epochs, aux_losses, marker='o')
-    plt.title('Aux Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Aux Loss')
-
-    plt.tight_layout()
-    plt.savefig(pdf_name, dpi=600, format='pdf', bbox_inches='tight')
 
 def compressai_train(train_data_root, data_root, \
                      trun_flag, transform_type, samples, bit_depth, \
@@ -265,9 +208,31 @@ if __name__ == "__main__":
     train_data_root = "/gdata1/gaocs/FCM_LM_Train_Data"
     test_data_root = "/gdata1/gaocs/FCM_LM_Test_Dataset"
 
-    # lambda_all = [0.0001, 0.0003, 0.0005, 0.0007, 0.0008, 0.001, 0.002]
-    # for lambda_value in lambda_all:
-    compressai_pipeline(pipeline_config, train_data_root, test_data_root, data_root, \
-                        transform_type, samples, bit_depth, \
-                        train_model_type, train_task, \
-                        arch, lambda_value, epochs, save_period, learning_rate, batch_size, patch_size, pretrained_model)
+
+    # # train cls
+    # lambda_all = [0.0016, 0.002, 0.0025, 0.003, 0.004, 0.005, 0.008, 0.01, 0.012, 0.015]
+    # epochs_all = [200, 200, 200, 1000, 200, 200, 200, 200, 200, 200]
+    # batch_size_all = [180, 180, 180, 180, 180, 180, 180, 180, 500, 500]
+
+    # train seg
+    lambda_all = [0.0003, 0.0005, 0.0007, 0.0008, 0.0015, 0.002, 0.0025, 0.003, 0.004, 0.005, 0.01, 0.015]
+    epochs_all = [200, 200, 200, 200, 200, 600, 600, 900, 600, 600, 1200, 1000]
+    batch_size_all = [128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128]
+
+    # # train dpt
+    # lambda_all = [0.0013, 0.0015, 0.0017, 0.0024, 0.0028, 0.0032, 0.005, 0.007, 0.008, 0.009]
+    # epochs_all = [200, 1000, 200, 200, 200, 200, 1000, 1000, 1000, 1000]
+    # batch_size_all = [500, 180, 500, 500, 500, 500, 180, 180, 180, 180]
+
+    # # train hybrid
+    # lambda_all = [0.0005, 0.001, 0.0025, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.015]
+    # epochs_all = [1000, 1000, 200, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
+    # batch_size_all = [180, 180, 500, 180, 180, 180, 180, 180, 180, 180]
+
+    for idx, lambda_value in enumerate(lambda_all):
+        epochs = epochs_all[idx]
+        batch_size = batch_size_all[idx]
+        compressai_pipeline(pipeline_config, train_data_root, test_data_root, data_root, \
+                            transform_type, samples, bit_depth, \
+                            train_model_type, train_task, \
+                            arch, lambda_value, epochs, save_period, learning_rate, batch_size, patch_size, pretrained_model)

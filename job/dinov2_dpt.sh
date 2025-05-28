@@ -17,6 +17,6 @@ python dpt.py \
     --batch_size "${8}" \
     --patch_size "${9}" \
     --lambda_value_all "${@:10}" \
-    > "$OUTDIR/${1}_trained_${2}_eval_dpt.txt"
+    > "$OUTDIR/${1}_trained_${2}_eval_dpt_all.txt"
 
 

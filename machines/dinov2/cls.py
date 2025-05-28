@@ -159,6 +159,103 @@ def evaluate_cls(model: torch.nn.Module, org_feature_path: str, rec_feature_path
 
     return eval_acc*100 / num_samples, eval_mse / num_samples
 
+def compute_token_cosine_similarity(x_orig, x_recon):
+    assert x_orig.shape == x_recon.shape, "Shape mismatch"
+
+    # Normalize token-wise
+    x_orig_norm = x_orig / (np.linalg.norm(x_orig, axis=1, keepdims=True) + 1e-8)
+    x_recon_norm = x_recon / (np.linalg.norm(x_recon, axis=1, keepdims=True) + 1e-8)
+
+    # Element-wise cosine similarity per token
+    cosine_sim = np.sum(x_orig_norm * x_recon_norm, axis=1)  # [N]
+
+    return np.mean(cosine_sim)  # scalar
+
+def compute_linear_CKA(x1, x2):
+    assert x1.shape == x2.shape, "Feature shape mismatch"
+
+    x1_centered = x1 - x1.mean(axis=0, keepdims=True)
+    x2_centered = x2 - x2.mean(axis=0, keepdims=True)
+
+    # HSIC numerator
+    hsic = np.linalg.norm(x1_centered @ x2_centered.T, ord='fro') ** 2
+
+    # Normalization denominator
+    norm_x1 = np.linalg.norm(x1_centered @ x1_centered.T, ord='fro')
+    norm_x2 = np.linalg.norm(x2_centered @ x2_centered.T, ord='fro')
+
+    return hsic / (norm_x1 * norm_x2 + 1e-8)
+
+def evaluate_cls_single_image(model: torch.nn.Module, org_feature_path: str, rec_feature_path: str, source_label_name: str):
+    """Evaluate image classification accuracy and feature reconstruction error.
+
+    Args:
+        model (torch.nn.Module): Classification model for evaluation.
+        org_feature_path (str): Path to the original features.
+        rec_feature_path (str): Path to the reconstructed features.
+        source_label_name (str): Path to the source label file.
+
+    Returns:
+        Accuracy, feature MSE
+    """
+    model.eval()
+    device = next(model.parameters()).device
+
+    eval_acc = 0.0
+    eval_mse = 0.0
+
+    # Retrieve reconstructed feature filenames
+    rec_feat_names = [f for f in os.listdir(rec_feature_path) if f.endswith('.npy')]
+
+    for idx, rec_feat_name in enumerate(rec_feat_names):
+        # Load reconstructed features
+        rec_features_numpy = np.load(f"{rec_feature_path}/{rec_feat_name}")
+        rec_features_tensor = torch.from_numpy(rec_features_numpy).to(device)
+
+        with torch.no_grad():
+            # Decode features and make predictions
+            # pred = torch.argmax(model.forward_head(rec_features_tensor), dim=1)
+            # logits = model.forward_head(rec_features_tensor)
+            logits = model.forward_head(rec_features_tensor).squeeze()
+
+            # Compute accuracy using labels
+            label = get_label_from_file(rec_feat_name.split('.')[0], source_label_name)
+
+            #gcs, get rank
+            sorted_indices = torch.argsort(logits, descending=True)
+            rank = (sorted_indices == label).nonzero(as_tuple=True)[0].item() + 1
+            # print(f"label: {label}, rank: {rank}")
+            pred = torch.argmax(logits)
+
+            label_tensor = torch.tensor(label).to(device)
+            num_correct = (pred == label_tensor).sum().item()
+            eval_acc += num_correct
+
+            # Compute MSE between original and reconstructed features
+            org_feat = np.load(f"{org_feature_path}/{rec_feat_name}")
+            mse = np.mean(np.square(org_feat - rec_features_numpy))
+            eval_mse += mse
+
+            # Calculate metrics
+            N = org_feat.shape[0]
+            C = org_feat.shape[1]
+            ssim_total = 0
+            cosine_simi_total = 0
+            cka_scroe_total = 0
+            for n in range(N):
+                for c in range(C):
+                    # ssim_total += ssim_func(org_feat[n,c,:,:], rec_features_numpy[n,c,:,:])
+                    cosine_simi_total += compute_token_cosine_similarity(org_feat[n,c,:,:], rec_features_numpy[n,c,:,:])
+                    cka_scroe_total = compute_linear_CKA(org_feat[n,c,:,:], rec_features_numpy[n,c,:,:])  # between [N, C]
+            # ssim_mean = ssim_total/N/C
+            cosine_simi_mean = cosine_simi_total/N/C
+            cka_scroe_mean = cka_scroe_total/N/C
+            print(rec_feat_name, f"{rank}", f"{mse:.8f}", f"{cosine_simi_mean:.4f}", f"{cka_scroe_mean:.4f}")
+
+    # Calculate and print metrics
+    num_samples = len(rec_feat_names)
+
+    return eval_acc*100 / num_samples, eval_mse / num_samples
 
 def cls_pipeline(backbone_checkpoint_path: str, head_checkpoint_path: str, source_img_path: str, source_label_name: str, org_feature_path: str, rec_feature_path: str):
     """Main function to run the evaluation."""
@@ -230,6 +327,72 @@ def compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, 
         print(f"Accuracy: {acc:.4f}")
         print(f"Feature MSE: {feat_mse:.8f}\n")
 
+def compressai_evaluation_multiple(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size):
+    # Set up paths
+    backbone_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_pretrain.pth'
+    head_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_cls_linear_head.pth'
+    source_img_path = '/gpub/imagenet_raw/test'
+    source_label_name = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/cls/source/imagenet_selected_label100.txt'
+    org_feature_path = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/cls/feature'
+    root_path = f'/gdata1/gaocs/Data_FQA/decoded'; print('root_path: ', root_path)
+
+    # Initialize the model
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = dinov2_vitg14_lc(layers=1, pretrained=True, weights=[backbone_checkpoint_path, head_checkpoint_path])
+    model.to(device)
+    
+    if train_task == 'cls':
+        lambda_all = [0.0016, 0.002, 0.0025, 0.003, 0.004, 0.005, 0.008, 0.01, 0.012, 0.015]
+        epochs_all = [200, 200, 200, 1000, 200, 200, 200, 200, 200, 200]
+        batch_size_all = [180, 180, 180, 180, 180, 180, 180, 180, 500, 500]
+    elif train_task == 'hybrid':
+        lambda_all = [0.0005, 0.001, 0.0025, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.015]
+        epochs_all = [1000, 1000, 200, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
+        batch_size_all = [180, 180, 500, 180, 180, 180, 180, 180, 180, 180]
+    
+    # Evaluate and print results
+    # lambda_all = lambda_all[:1]
+    for idx, lambda_value in enumerate(lambda_all):
+        epochs = epochs_all[idx]
+        batch_size = batch_size_all[idx]
+
+        print(source_label_name)
+        print(arch, train_task, transform_type, samples, bit_depth, lambda_value, epochs, learning_rate, batch_size, patch_size)
+
+        rec_feature_path = f"{root_path}/{arch}/trained_{train_task}/{transform_type}{samples}_bitdepth{bit_depth}/dinov2_cls/" \
+                           f"lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size.replace(' ', '-')}"
+        
+        acc, feat_mse = evaluate_cls_single_image(model, org_feature_path, rec_feature_path, source_label_name)
+        print(f"Accuracy: {acc:.4f}")
+        print(f"Feature MSE: {feat_mse:.8f}\n\n")
+
+def h26x_evaluation_multiple(arch, transform_type, samples, bit_depth):
+    # Set up paths
+    backbone_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_pretrain.pth'
+    head_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_cls_linear_head.pth'
+    source_img_path = '/gpub/imagenet_raw/test'
+    source_label_name = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/cls/source/imagenet_selected_label100.txt'
+    org_feature_path = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/cls/feature'
+    root_path = f'/gdata1/gaocs/Data_FQA/postprocessed'; print('root_path: ', root_path)
+
+    # Initialize the model
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = dinov2_vitg14_lc(layers=1, pretrained=True, weights=[backbone_checkpoint_path, head_checkpoint_path])
+    model.to(device)
+    
+    QP_all = [2,4,6,8,10,12,14,16,18,20]
+    
+    # Evaluate and print results
+    for idx, QP in enumerate(QP_all):
+        print(source_label_name)
+        print(arch, transform_type, samples, bit_depth, QP)
+
+        rec_feature_path = f"{root_path}/{arch}/{transform_type}{samples}_bitdepth{bit_depth}/dinov2_cls/QP{QP}"
+        
+        acc, feat_mse = evaluate_cls_single_image(model, org_feature_path, rec_feature_path, source_label_name)
+        print(f"Accuracy: {acc:.4f}")
+        print(f"Feature MSE: {feat_mse:.8f}\n\n")
+
 def argument_parsing():
     parser = argparse.ArgumentParser(description="Train Evaluation Pipeline")
     parser.add_argument('--arch', type=str, default='bmshj2018-hyperprior', help='arch')
@@ -261,7 +424,13 @@ if __name__ == "__main__":
     batch_size = args.batch_size
     patch_size = args.patch_size
 
-    compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
+    # compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
+    if arch == 'hyperprior':
+        compressai_evaluation_multiple(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
+    elif arch == 'vtm':
+        h26x_evaluation_multiple(arch, transform_type, samples, bit_depth)
+    elif arch == 'hm':
+        h26x_evaluation_multiple(arch, transform_type, samples, bit_depth)
 
     # source_name = 'imagenet_selected_label100.txt'
     # transform_type = 'kmeans'; samples = 10; bit_depth = 8

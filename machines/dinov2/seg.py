@@ -474,6 +474,114 @@ def seg_evaluate(model: torch.nn.Module, source_img_path: str, org_feature_path:
 
     return all_iou, all_miou, mse_list
 
+def compute_token_cosine_similarity(x_orig, x_recon):
+    assert x_orig.shape == x_recon.shape, "Shape mismatch"
+
+    # Normalize token-wise
+    x_orig_norm = x_orig / (np.linalg.norm(x_orig, axis=1, keepdims=True) + 1e-8)
+    x_recon_norm = x_recon / (np.linalg.norm(x_recon, axis=1, keepdims=True) + 1e-8)
+
+    # Element-wise cosine similarity per token
+    cosine_sim = np.sum(x_orig_norm * x_recon_norm, axis=1)  # [N]
+
+    return np.mean(cosine_sim)  # scalar
+
+def compute_linear_CKA(x1, x2):
+    assert x1.shape == x2.shape, "Feature shape mismatch"
+
+    x1_centered = x1 - x1.mean(axis=0, keepdims=True)
+    x2_centered = x2 - x2.mean(axis=0, keepdims=True)
+
+    # HSIC numerator
+    hsic = np.linalg.norm(x1_centered @ x2_centered.T, ord='fro') ** 2
+
+    # Normalization denominator
+    norm_x1 = np.linalg.norm(x1_centered @ x1_centered.T, ord='fro')
+    norm_x2 = np.linalg.norm(x2_centered @ x2_centered.T, ord='fro')
+
+    return hsic / (norm_x1 * norm_x2 + 1e-8) 
+
+def seg_evaluate_single_image(model: torch.nn.Module, source_img_path: str, org_feature_path: str, rec_feature_path: str, image_name: str, backbone_model: torch.nn.Module):
+    """Evaluate segmentation performance.
+
+    Args:
+        model (torch.nn.Module): Segmentation model.
+        source_img_path (str): Path to source images.
+        org_feature_path (str): Path to original features.
+        rec_feature_path (str): Path to reconstructed features.
+        image_list (List[str]): List of image names to evaluate.
+        backbone_model (torch.nn.Module): Backbone model.
+
+    Returns:
+        Dict[str, float]: Evaluation metrics.
+    """
+    device = next(model.parameters()).device
+    test_pipeline = [LoadImage()] + model.cfg.data.test.pipeline[1:]
+    test_pipeline = Compose(test_pipeline)
+
+    # Load image and label
+    img = Image.open(f'{source_img_path}/JPEGImages/{image_name}.jpg')
+    label = Image.open(f'{source_img_path}/SegmentationClass/{image_name}.png')
+    img = np.array(img)[:, :, ::-1]  # BGR
+
+    # Preprocess data
+    data = dict(img=img)
+    data = test_pipeline(data)
+    data = collate([data], samples_per_gpu=1)
+    if next(model.parameters()).is_cuda:
+        data = scatter(data, [device])[0]   # Scatter to specified GPU
+    else:
+        data['img_metas'] = [i.data[0] for i in data['img_metas']]
+
+    with torch.no_grad():
+        # Load features and move to the specified device
+        rec_feature_numpy = np.load(f'{rec_feature_path}/{image_name}.npy')
+        rec_features_tensor = torch.from_numpy(rec_feature_numpy).to(device)
+        
+        # Convert features to the required format for the model
+        rec_feature_list = [
+            [rec_features_tensor[i, j].unsqueeze(0) for j in range(rec_features_tensor.shape[1])]
+            for i in range(rec_features_tensor.shape[0])
+        ]
+        
+        # Perform segmentation prediction
+        pred = model.simple_test_decode(
+            rec_feature_list, 
+            data['img_metas'][0], 
+            backbone_model, 
+            rescale=True
+        )
+
+    array_label = np.array(label)
+
+    number_of_class = model.decode_head.num_classes
+    hist = np.zeros((number_of_class, number_of_class))   # 20 classes + 1 background
+    hist += fast_hist(array_label, pred[0], number_of_class)
+
+    # Calculate metrics
+    class_miou = per_class_miou(hist)
+    miou = np.nanmean(class_miou)
+
+    org_feature = np.load(f'{org_feature_path}/{image_name}.npy')
+    mse = (np.mean((org_feature - rec_feature_numpy)**2))
+    # print(np.max(org_feature), np.min(org_feature), np.mean(org_feature))
+    # print(np.max(rec_feature_numpy), np.min(rec_feature_numpy), np.mean(rec_feature_numpy))
+
+    # print(org_feature.shape)
+    N = org_feature.shape[0]
+    C = org_feature.shape[1]
+    ssim_total = 0
+    cosine_simi_total = 0
+    cka_scroe_total = 0
+    for n in range(N):
+        for c in range(C):
+            # ssim_total += ssim_func(org_feature[n,c,:,:], rec_feature_numpy[n,c,:,:])
+            cosine_simi_total += compute_token_cosine_similarity(org_feature[n,c,:,:], rec_feature_numpy[n,c,:,:])
+            cka_scroe_total = compute_linear_CKA(org_feature[n,c,:,:], rec_feature_numpy[n,c,:,:])  # between [N, C]
+    # ssim_mean = ssim_total/N/C
+    cosine_simi_mean = cosine_simi_total/N/C
+    cka_scroe_mean = cka_scroe_total/N/C
+    return miou, mse, cosine_simi_mean, cka_scroe_mean
 
 def seg_pipeline(config_path: str, backbone_checkpoint_path: str, head_checkpoint_path: str, source_img_path: str, source_split_name: str, org_feature_path: str, rec_feature_path: str):
     """Main function to run the depth estimation pipeline."""
@@ -500,7 +608,6 @@ def seg_pipeline(config_path: str, backbone_checkpoint_path: str, head_checkpoin
     # for iou in all_iou: print(f"{iou*100:.4f}", end=" ") 
     # print(f"\nmIoU: {all_miou*100:.4f}")
     # print(f"Feature MSE: {np.mean(mse_list):.8f}")
-
 
 def transform_evaluation(transform_type, samples, bit_depth):
     # Set up paths
@@ -568,11 +675,116 @@ def compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, 
         rec_feature_path = f"{root_path}/{arch}/trained_{train_task}/{transform_type}{samples}_bitdepth{bit_depth}/dinov2_seg/" \
                            f"lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size.replace(' ', '-')}"
 
+        for image_name in image_list:
+            single_image_miou, single_image_mse, cosine_simi, cka_score = seg_evaluate_single_image(model, source_img_path, org_feature_path, rec_feature_path, image_name, backbone_model)
+            print(image_name, f"{single_image_miou*100:.4f}", f"{single_image_mse:.8f}", f"{cosine_simi:.4f}", f"{cka_score:.4f}")
+        
+        # print('\n')
         all_iou, all_miou, mse_list = seg_evaluate(model, source_img_path, org_feature_path, rec_feature_path, image_list, backbone_model)
         # print(f"IoU: ", end=" ")
         # for iou in all_iou: print(f"{iou*100:.4f}", end=" ") 
         print(f"mIoU: {all_miou*100:.4f}")
-        print(f"Feature MSE: {np.mean(mse_list):.8f}\n")
+        print(f"Feature MSE: {np.mean(mse_list):.8f}\n\n")
+
+def compressai_evaluation_multiple(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size):
+    # Set up paths
+    config_path = 'cfg/dinov2_vitg14_voc2012_linear_config.py'
+    backbone_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_pretrain.pth'
+    head_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_voc2012_linear_head.pth'
+    
+    source_img_path = '/gdata/gaocs/dataset/VOC2012'
+    source_split_name = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/seg/source/seg_val_100.txt'
+    org_feature_path = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/seg/feature'
+    root_path = f'/gdata1/gaocs/Data_FQA/decoded'; print('root_path: ', root_path)
+    
+    # Load configuration
+    cfg = mmcv.Config.fromfile(config_path)
+    
+    # Setup source image list
+    with open(source_split_name) as f:
+        image_list = f.readlines()
+        image_list = ''.join(image_list).strip('\n').splitlines()
+
+    # Setup models
+    backbone_model = setup_backbone(backbone_checkpoint_path)
+    model = build_segmentation_model(cfg, backbone_model, head_checkpoint_path)
+    
+    
+    # train seg
+    if train_task == 'seg':
+        lambda_all = [0.0003, 0.0005, 0.0007, 0.0008, 0.0015, 0.002, 0.0025, 0.003, 0.004, 0.005, 0.01, 0.015]
+        epochs_all = [200, 200, 200, 200, 200, 600, 600, 900, 600, 600, 1200, 1000]
+        batch_size_all = [128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128]
+    elif train_task == 'hybrid':
+        lambda_all = [0.0005, 0.001, 0.0025, 0.003, 0.004, 0.005, 0.006, 0.007, 0.01, 0.015]
+        epochs_all = [1000, 1000, 200, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
+        batch_size_all = [180, 180, 500, 180, 180, 180, 180, 180, 180, 180]
+
+    # Evaluate and print results
+    for idx, lambda_value in enumerate(lambda_all):
+        epochs = epochs_all[idx]
+        batch_size = batch_size_all[idx]
+
+        print(source_split_name)
+        print(arch, train_task, transform_type, samples, bit_depth, lambda_value, epochs, learning_rate, batch_size, patch_size)
+        
+        rec_feature_path = f"{root_path}/{arch}/trained_{train_task}/{transform_type}{samples}_bitdepth{bit_depth}/dinov2_seg/" \
+                           f"lambda{lambda_value}_epochs{epochs}_lr{learning_rate}_bs{batch_size}_patch{patch_size.replace(' ', '-')}"
+
+        for image_name in image_list:
+            single_image_miou, single_image_mse, cosine_simi, cka_score = seg_evaluate_single_image(model, source_img_path, org_feature_path, rec_feature_path, image_name, backbone_model)
+            print(image_name, f"{single_image_miou*100:.4f}", f"{single_image_mse:.8f}", f"{cosine_simi:.4f}", f"{cka_score:.4f}")
+        
+        all_iou, all_miou, mse_list = seg_evaluate(model, source_img_path, org_feature_path, rec_feature_path, image_list, backbone_model)
+        # print(f"IoU: ", end=" ")
+        # for iou in all_iou: print(f"{iou*100:.4f}", end=" ") 
+        print(f"mIoU: {all_miou*100:.4f}")
+        print(f"Feature MSE: {np.mean(mse_list):.8f}\n\n")
+
+def h26x_evaluation_multiple(arch, transform_type, samples, bit_depth):
+    # Set up paths
+    config_path = 'cfg/dinov2_vitg14_voc2012_linear_config.py'
+    backbone_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_pretrain.pth'
+    head_checkpoint_path = '/gdata/gaocs/pretrained_models/dinov2/dinov2_vitg14_voc2012_linear_head.pth'
+    
+    source_img_path = '/gdata/gaocs/dataset/VOC2012'
+    source_split_name = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/seg/source/seg_val_100.txt'
+    org_feature_path = '/gdata1/gaocs/FCM_LM_Test_Dataset/dinov2/seg/feature'
+    root_path = f'/gdata1/gaocs/Data_FQA/postprocessed'; print('root_path: ', root_path)
+    
+    # Load configuration
+    cfg = mmcv.Config.fromfile(config_path)
+    
+    # Setup source image list
+    with open(source_split_name) as f:
+        image_list = f.readlines()
+        image_list = ''.join(image_list).strip('\n').splitlines()
+
+    # Setup models
+    backbone_model = setup_backbone(backbone_checkpoint_path)
+    model = build_segmentation_model(cfg, backbone_model, head_checkpoint_path)
+    
+    
+    # train seg
+    QP_all = [2,4,6,8,10,12,14,16,18,20]
+
+    # Evaluate and print results
+    for idx, QP in enumerate(QP_all):
+        print(source_split_name)
+        print(arch, transform_type, samples, bit_depth, QP)
+        
+        rec_feature_path = f"{root_path}/{arch}/{transform_type}{samples}_bitdepth{bit_depth}/dinov2_seg/QP{QP}"
+
+        for image_name in image_list:
+            single_image_miou, single_image_mse, cosine_simi, cka_score = seg_evaluate_single_image(model, source_img_path, org_feature_path, rec_feature_path, image_name, backbone_model)
+            print(image_name, f"{single_image_miou*100:.4f}", f"{single_image_mse:.8f}", f"{cosine_simi:.4f}", f"{cka_score:.4f}")
+        
+        # print('\n')
+        all_iou, all_miou, mse_list = seg_evaluate(model, source_img_path, org_feature_path, rec_feature_path, image_list, backbone_model)
+        # print(f"IoU: ", end=" ")
+        # for iou in all_iou: print(f"{iou*100:.4f}", end=" ") 
+        print(f"mIoU: {all_miou*100:.4f}")
+        print(f"Feature MSE: {np.mean(mse_list):.8f}\n\n")
 
 def argument_parsing():
     parser = argparse.ArgumentParser(description="Train Evaluation Pipeline")
@@ -605,7 +817,13 @@ if __name__ == "__main__":
     batch_size = args.batch_size
     patch_size = args.patch_size
     
-    compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
+    # compressai_evaluation(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
+    if arch == 'hyperprior':
+        compressai_evaluation_multiple(arch, train_task, transform_type, samples, bit_depth, lambda_value_all, epochs, learning_rate, batch_size, patch_size)
+    elif arch == 'vtm':
+        h26x_evaluation_multiple(arch, transform_type, samples, bit_depth)
+    elif arch == 'hm':
+        h26x_evaluation_multiple(arch, transform_type, samples, bit_depth)
 
     # # for inverse transformed evaluation
     # transform_type = 'kmeans'; samples = 10; bit_depth = 8

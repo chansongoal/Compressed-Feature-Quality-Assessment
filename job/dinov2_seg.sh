@@ -15,6 +15,6 @@ python seg.py \
     --batch_size "${8}" \
     --patch_size "${9}" \
     --lambda_value_all "${@:10}" \
-    > "$OUTDIR/${1}_trained_${2}_eval_seg.txt"
+    > "$OUTDIR/${1}_trained_${2}_eval_seg_all.txt"
 
 
