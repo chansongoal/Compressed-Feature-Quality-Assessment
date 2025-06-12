@@ -79,9 +79,9 @@ def correlation(source_file, log_file):
 if __name__ == "__main__":
     arch = 'hm'; train_task = 'hybrid'; quant_type = 'uniform'; samples = 0; bit_depth = 10
     # arch = 'vtm'; train_task = 'hybrid'; quant_type = 'uniform'; samples = 0; bit_depth = 10
-    # arch = 'hyperprior'; train_task = 'dpt'; quant_type = 'kmeans'; samples = 10; bit_depth = 8
+    arch = 'hyperprior'; train_task = 'seg'; quant_type = 'kmeans'; samples = 10; bit_depth = 8
     
-    test_model_type = 'dinov2'; test_task = 'dpt'; 
+    test_model_type = 'dinov2'; test_task = 'seg'; 
 
     dataset_root = '/gdata1/gaocs/FCM_LM_Test_Dataset'
 
