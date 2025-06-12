@@ -21,7 +21,7 @@ CFQA is applicable to:
 - **Edge-cloud systems**: For real-time estimation of compressed feature quality before transmission.
 - **Rate control & caching**: Supporting adaptive encoding and transmission decisions.
 
-![Application Scenarios](readme/application.png)
+![Application Scenarios](application.png)
 
 ## 📦 Dataset Overview
 
