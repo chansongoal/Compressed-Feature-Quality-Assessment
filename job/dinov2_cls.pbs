@@ -1,6 +1,6 @@
-#PBS -N cls_hm
-#PBS -o /ghome/gaocs/FCM-UFC/err_out/cls_hm.out
-#PBS -e /ghome/gaocs/FCM-UFC/err_out/cls_hm.err
+#PBS -N cls_check
+#PBS -o /ghome/gaocs/FCM-UFC/err_out/cls_check.out
+#PBS -e /ghome/gaocs/FCM-UFC/err_out/cls_check.err
 #PBS -l nodes=1:gpus=1:A,walltime=350:00:00
 #PBS -r y
 cd $PBS_O_WORKDIR

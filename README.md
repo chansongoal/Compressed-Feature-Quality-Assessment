@@ -133,10 +133,17 @@ If you use our dataset or evaluation tools, please cite the following paper:
 
 ```bibtex
 @inproceedings{gao2025cfqa,
-  title={Compressed Feature Quality Assessment: Dataset and Baselines},
-  author={Gao, Changsheng and Zhou, Wei and Lin, Guosheng and Lin, Weisi},
-  booktitle={Proceedings of ACM Multimedia (ACMMM)},
-  year={2025}
+author = {Gao, Changsheng and Zhou, Wei and Lin, Guosheng and Lin, Weisi},
+title = {Compressed Feature Quality Assessment: Dataset and Baselines},
+year = {2025},
+isbn = {9798400720352},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+doi = {10.1145/3746027.3758309},
+booktitle = {Proceedings of the 33rd ACM International Conference on Multimedia},
+pages = {13450–13456},
+location = {Dublin, Ireland},
+series = {MM '25}
 }
 ```
 
@@ -146,9 +153,11 @@ This dataset is licensed under the [Creative Commons Attribution-NonCommercial 4
 
 ## 🔗 Related Links
 
-- 📘 [Paper (Preprint)](https://arxiv.org/html/2506.07412v1)
+- 📘 [Paper](https://dl.acm.org/doi/epdf/10.1145/3746027.3755814)
+- 📁 [HuggingFace Dataset Mirror](https://huggingface.co/datasets/chansongoal/CFQA_Compressed-Feature-Quality-Assessment)
+- 📁 [HuggingFace Model Weights Mirror](https://huggingface.co/chansongoal/CFQA_Compressed-Feature-Quality-Assessment)
 - 📁 [OneDrive Dataset Mirror](https://entuedu-my.sharepoint.com/:f:/r/personal/changsheng_gao_staff_main_ntu_edu_sg/Documents/CFQA_Dataset?csf=1&web=1&e=Bt5a3q)
-<!-- - 🎬 [Demo Video (Coming Soon)](https://youtu.be/XXXXXX) -->
+
 
 ---
 
